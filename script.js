@@ -3,7 +3,7 @@
 // --- Configuration ---
 const MEMORY_SIZE = 4096;
 const MAX_PROCESSES = 1000;
-const MUTATION_RATE = 0.001;
+let mutationRate = 0.001;
 const MAX_CYCLES = 1000000;
 
 // --- Instruction Set Architecture (ISA) ---
@@ -18,6 +18,7 @@ const OPCODES = {
     SPWN: 7,
     SEQ: 8,
     SNE: 9,
+    RAND: 10,
     DIE: 15
 };
 
@@ -71,6 +72,7 @@ class Process {
         this.registers = new Int32Array(4).fill(0);
         this.alive = true;
         this.age = 0;
+        this.gen = parent ? parent.gen + 1 : 0;
         this.color = parent ? parent.color : `hsl(${Math.random() * 360}, 100%, 50%)`;
     }
 }
@@ -81,6 +83,7 @@ class VM {
         this.memoryMap = new Array(MEMORY_SIZE).fill(null);
         this.processes = [];
         this.cycles = 0;
+        this.totalMutations = 0;
     }
 
     reset() {
@@ -88,6 +91,7 @@ class VM {
         this.memoryMap.fill(null);
         this.processes = [];
         this.cycles = 0;
+        this.totalMutations = 0;
     }
 
     addProcess(ip) {
@@ -127,9 +131,10 @@ class VM {
         const target = this.wrap(addr);
 
         let finalValue = value;
-        if (Math.random() < MUTATION_RATE) {
+        if (Math.random() < mutationRate) {
              const bit = Math.floor(Math.random() * 32);
              finalValue ^= (1 << bit);
+             this.totalMutations++;
         }
 
         this.memory[target] = finalValue;
@@ -245,6 +250,18 @@ class VM {
                         const valB = this.getVal(p, instr.modeB, instr.valB);
                         if (valA !== valB) {
                             newIP++; // Skip next
+                        }
+                        break;
+                    }
+                    case OPCODES.RAND: {
+                        const val = Math.floor(Math.random() * MEMORY_SIZE);
+                        if (instr.modeB === MODES.REGISTER) {
+                            p.registers[Math.abs(instr.valB) % 4] = val;
+                        } else {
+                            const addrB = this.getAddr(p, instr.modeB, instr.valB);
+                            if (addrB >= 0) {
+                                this.writeMem(addrB, val, p);
+                            }
                         }
                         break;
                     }
@@ -445,7 +462,11 @@ function draw() {
 function updateStats() {
     const stats = document.getElementById('stats');
     if(stats) {
-        stats.innerText = `Active Processes: ${vm.processes.length} | Cycles: ${vm.cycles}`;
+        let maxGen = 0;
+        for (const p of vm.processes) {
+            if (p.gen > maxGen) maxGen = p.gen;
+        }
+        stats.innerText = `Processes: ${vm.processes.length} | Cycles: ${vm.cycles} | Max Gen: ${maxGen} | Mutations: ${vm.totalMutations}`;
     }
 }
 
@@ -471,6 +492,44 @@ if (typeof document !== 'undefined') {
 
     document.getElementById('speedRange').addEventListener('input', (e) => {
         speed = parseInt(e.target.value);
+    });
+
+    document.getElementById('mutationRange').addEventListener('input', (e) => {
+        // Range 0-100 maps to 0.0 - 0.1 (0% to 10%)
+        mutationRate = parseInt(e.target.value) / 1000;
+    });
+
+    document.getElementById('memoryCanvas').addEventListener('click', (e) => {
+        const canvas = e.target;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        const cols = 64;
+        const rows = 64;
+        const cellW = canvas.width / cols;
+        const cellH = canvas.height / rows;
+
+        const col = Math.floor(x / cellW);
+        const row = Math.floor(y / cellH);
+        const idx = row * cols + col;
+
+        if (idx >= 0 && idx < MEMORY_SIZE) {
+            const word = vm.memory[idx];
+            const instr = Instruction.decode(word);
+
+            const opNames = Object.keys(OPCODES).find(key => OPCODES[key] === instr.opcode) || "UNKNOWN";
+
+            const info = document.getElementById('info');
+            info.innerHTML = `
+                <p>Addr: ${idx}</p>
+                <p>Op: ${opNames} (${instr.opcode})</p>
+                <p>ModeA: ${instr.modeA}, ValA: ${instr.valA}</p>
+                <p>ModeB: ${instr.modeB}, ValB: ${instr.valB}</p>
+                <p>Raw: ${word.toString(16)}</p>
+                <p>Owner Color: <span style="display:inline-block;width:10px;height:10px;background-color:${vm.memoryMap[idx] || 'black'}"></span></p>
+            `;
+        }
     });
 
     // Start
