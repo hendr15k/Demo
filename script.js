@@ -296,6 +296,13 @@ function getSpeciesProgram(name) {
         }
     }
 
+    if (name === "Fortress") {
+        // Fortress: Writes DIE instructions around itself before replicating
+        // Writes DIE (Opcode 15) to -1 (Behind) and +30 (Ahead)
+        header.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 15, MODES.RELATIVE, -1));
+        header.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 15, MODES.RELATIVE, 30));
+    }
+
     if (name === "Hyper") {
         // Hyper Replicator v4: Robust Split-Loop with Workers at End.
         // Fixes "Packed ADD Carry" bug by ensuring negative offsets never wrap to 0.
@@ -807,6 +814,13 @@ if (typeof document !== 'undefined') {
 
             const opNames = Object.keys(OPCODES).find(key => OPCODES[key] === instr.opcode) || "UNKNOWN";
 
+            // Find process at this IP
+            const process = vm.processes.find(p => p.ip === idx);
+            let processInfo = "";
+            if (process) {
+                processInfo = `<p><strong>Process Head</strong></p><p>Gen: ${process.gen}</p><p>Age: ${process.age}</p>`;
+            }
+
             const info = document.getElementById('info');
             info.innerHTML = `
                 <p>Addr: ${idx}</p>
@@ -815,6 +829,7 @@ if (typeof document !== 'undefined') {
                 <p>ModeB: ${instr.modeB}, ValB: ${instr.valB} (${instr.valB >= 2048 ? instr.valB - 4096 : instr.valB})</p>
                 <p>Raw: ${word.toString(16)}</p>
                 <p>Owner Color: <span style="display:inline-block;width:10px;height:10px;background-color:${vm.memoryMap[idx] || 'black'}"></span></p>
+                ${processInfo}
             `;
         }
     });
