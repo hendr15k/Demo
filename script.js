@@ -84,6 +84,7 @@ class VM {
         this.processes = [];
         this.cycles = 0;
         this.totalMutations = 0;
+        this.populationHistory = [];
     }
 
     reset() {
@@ -92,6 +93,7 @@ class VM {
         this.processes = [];
         this.cycles = 0;
         this.totalMutations = 0;
+        this.populationHistory = [];
     }
 
     addProcess(ip) {
@@ -483,6 +485,27 @@ function init(speciesName = "Basic") {
 
     draw();
     updateStats();
+    drawPopulationGraph();
+}
+
+function initRandomSoup() {
+    vm = new VM();
+
+    // Fill memory with random instructions
+    for(let i=0; i<MEMORY_SIZE; i++) {
+        // Random 32-bit integer
+        vm.memory[i] = Math.floor(Math.random() * 0xFFFFFFFF);
+    }
+
+    // Create random processes
+    for(let i=0; i<50; i++) {
+        const ip = Math.floor(Math.random() * MEMORY_SIZE);
+        vm.addProcess(ip);
+    }
+
+    draw();
+    updateStats();
+    drawPopulationGraph();
 }
 
 function loop() {
@@ -495,7 +518,47 @@ function loop() {
 
     draw();
     updateStats();
+    drawPopulationGraph();
     animationId = requestAnimationFrame(loop);
+}
+
+function drawPopulationGraph() {
+    const canvas = document.getElementById('populationGraph');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // Update history
+    vm.populationHistory.push(vm.processes.length);
+    if (vm.populationHistory.length > width) {
+        vm.populationHistory.shift();
+    }
+
+    // Draw
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.beginPath();
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = 2;
+
+    const maxPop = Math.max(MAX_PROCESSES, ...vm.populationHistory);
+
+    for (let i = 0; i < vm.populationHistory.length; i++) {
+        const x = i;
+        const pop = vm.populationHistory[i];
+        const y = height - (pop / maxPop * height);
+
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Draw current value text
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px monospace';
+    ctx.fillText(`Pop: ${vm.processes.length}`, width - 60, 20);
 }
 
 function draw() {
@@ -569,6 +632,12 @@ if (typeof document !== 'undefined') {
         cancelAnimationFrame(animationId);
         const species = document.getElementById('speciesSelect').value;
         init(species);
+    });
+
+    document.getElementById('randomSoupBtn').addEventListener('click', () => {
+        isRunning = false;
+        cancelAnimationFrame(animationId);
+        initRandomSoup();
     });
 
     document.getElementById('speedRange').addEventListener('input', (e) => {

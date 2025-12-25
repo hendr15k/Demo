@@ -22,6 +22,8 @@ Die Simulation besteht aus einer Virtuellen Maschine (VM) mit einer benutzerdefi
 *   **Visueller Speicher**: Sehen Sie das Speicherlayout in Echtzeit. Farben repräsentieren verschiedene Abstammungslinien.
 *   **Inspektion**: Klicken Sie auf ein beliebiges Pixel im Raster, um den Befehl an dieser Adresse zu untersuchen.
 *   **Statistiken**: Verfolgen Sie aktive Prozesse, Gesamtzyklen, erreichte maximale Generation und Gesamtmutationen.
+*   **Populationsgraph**: Echtzeit-Visualisierung der Anzahl aktiver Prozesse.
+*   **Random Soup**: Starten Sie eine "Ursuppe" mit zufälligem Speicherinhalt und zufälligen Prozessen, um zu sehen, ob Leben spontan entsteht (oder zumindest interessante Muster).
 *   **Steuerung**: Anpassbare Geschwindigkeit, Mutationsrate, Pause/Weiter und Reset.
 
 ## Befehlssatzarchitektur (ISA)
@@ -65,6 +67,7 @@ Jeder Befehl ist ein 32-Bit-Wort, das Folgendes enthält:
 *   **Start**: Startet die Simulationsschleife.
 *   **Pause**: Stoppt die Simulation.
 *   **Reset**: Löscht den Speicher und startet neu mit einer frischen Instanz der gewählten Spezies.
+*   **Random Soup**: Startet die Simulation mit zufälligem Speicherinhalt.
 *   **Species Select**: Wählen Sie den Organismus, der beim Reset injiziert werden soll.
 *   **Speed**: Passt die Anzahl der VM-Zyklen pro Frame an.
 *   **Mutation**: Passt die Wahrscheinlichkeit für Bit-Flips an (0% bis 10%).

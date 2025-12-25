@@ -13,6 +13,7 @@
             <button id="startBtn">Start</button>
             <button id="pauseBtn">Pause</button>
             <button id="resetBtn">Reset</button>
+            <button id="randomSoupBtn">Random Soup</button>
             <select id="speciesSelect">
                 <option value="Basic">Basic Replicator</option>
                 <option value="SmartLoop">Smart Loop</option>
@@ -20,9 +21,12 @@
             </select>
             <label>Speed: <input type="range" id="speedRange" min="1" max="100" value="50"></label>
             <label>Mutation: <input type="range" id="mutationRange" min="0" max="100" value="1"></label>
+        </div>
+        <div id="statsContainer">
             <span id="stats">Active Processes: 0 | Cycles: 0</span>
         </div>
         <canvas id="memoryCanvas" width="512" height="512"></canvas>
+        <canvas id="populationGraph" width="512" height="100" style="background-color: #111; border: 1px solid #333; margin-top: 5px;"></canvas>
         <div id="info">
             <p>Each pixel represents a memory byte. Colors indicate ownership/activity.</p>
         </div>
