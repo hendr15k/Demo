@@ -24,6 +24,10 @@
             </select>
             <label>Geschwindigkeit: <input type="range" id="speedRange" min="1" max="100" value="50"></label>
             <label>Mutation: <input type="range" id="mutationRange" min="0" max="100" value="1"> <span id="mutationValue">0.1%</span></label>
+            <label>Max Alter: <input type="range" id="maxAgeRange" min="0" max="10000" value="0"> <span id="maxAgeValue">∞</span></label>
+            <button id="exportBtn">Save</button>
+            <button id="importBtn">Load</button>
+            <input type="file" id="importFile" style="display:none">
         </div>
         <div id="statsContainer">
             <span id="stats">Aktive Prozesse: 0 | Zyklen: 0</span>

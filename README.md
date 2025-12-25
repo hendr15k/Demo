@@ -26,6 +26,8 @@ Die Simulation besteht aus einer Virtuellen Maschine (VM) mit einer benutzerdefi
 *   **Visueller Speicher**: Echtzeit-Raster. Klicken Sie auf Pixel, um Befehle zu inspizieren.
 *   **Populationsgraph**: Visualisierung der Anzahl aktiver Prozesse über die Zeit.
 *   **Ursuppe (Random Soup)**: Starten Sie mit zufälligem Speicherinhalt, um spontane Entstehung von Replikatoren zu beobachten.
+*   **Maximales Alter**: Legen Sie eine Lebensspanne für Prozesse fest, um alten Code automatisch zu bereinigen und Evolution zu beschleunigen.
+*   **Speichern/Laden**: Exportieren und Importieren Sie den kompletten Simulationszustand als JSON-Datei.
 *   **Steuerung**: Geschwindigkeit, Mutationsrate, Pause/Schritt/Reset.
 
 ## Bedienung
@@ -43,6 +45,8 @@ Die Simulation besteht aus einer Virtuellen Maschine (VM) mit einer benutzerdefi
 *   **Ursuppe**: Startet mit zufälligem Speicher.
 *   **Geschwindigkeit**: Regelt die VM-Zyklen pro Frame.
 *   **Mutation**: Regelt die Bit-Flip-Wahrscheinlichkeit.
+*   **Max Alter**: Begrenzt die Lebensdauer eines Prozesses (0 = Unendlich). Ältere Prozesse sterben automatisch.
+*   **Save/Load**: Speichert den aktuellen Zustand in eine Datei oder lädt einen Zustand.
 
 ## Technische Details
 
