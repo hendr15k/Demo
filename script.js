@@ -93,6 +93,7 @@ class VM {
         this.cycles = 0;
         this.totalMutations = 0;
         this.populationHistory = [];
+        this.maxAge = 0; // 0 = Infinite
     }
 
     reset() {
@@ -102,6 +103,46 @@ class VM {
         this.cycles = 0;
         this.totalMutations = 0;
         this.populationHistory = [];
+    }
+
+    exportState() {
+        return JSON.stringify({
+            memory: Array.from(this.memory),
+            memoryMap: this.memoryMap,
+            processes: this.processes.map(p => ({
+                ip: p.ip,
+                registers: Array.from(p.registers),
+                alive: p.alive,
+                age: p.age,
+                gen: p.gen,
+                hue: p.hue,
+                color: p.color
+            })),
+            cycles: this.cycles,
+            totalMutations: this.totalMutations,
+            maxAge: this.maxAge,
+            populationHistory: this.populationHistory
+        });
+    }
+
+    importState(json) {
+        const state = JSON.parse(json);
+        this.memory = new Int32Array(state.memory);
+        this.memoryMap = state.memoryMap;
+        this.processes = state.processes.map(pData => {
+            const p = new Process(pData.ip);
+            p.registers = new Int32Array(pData.registers);
+            p.alive = pData.alive;
+            p.age = pData.age;
+            p.gen = pData.gen;
+            p.hue = pData.hue;
+            p.color = pData.color;
+            return p;
+        });
+        this.cycles = state.cycles || 0;
+        this.totalMutations = state.totalMutations || 0;
+        this.maxAge = state.maxAge || 0;
+        this.populationHistory = state.populationHistory || [];
     }
 
     addProcess(ip) {
@@ -282,6 +323,9 @@ class VM {
 
             p.ip = this.wrap(newIP);
             p.age++;
+            if (this.maxAge > 0 && p.age > this.maxAge) {
+                p.alive = false;
+            }
         }
 
         this.cycles++;
@@ -808,6 +852,57 @@ if (typeof document !== 'undefined') {
         const val = parseInt(e.target.value);
         mutationRate = val / 1000;
         document.getElementById('mutationValue').innerText = (mutationRate * 100).toFixed(1) + "%";
+    });
+
+    document.getElementById('maxAgeRange').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        if (vm) vm.maxAge = val;
+        document.getElementById('maxAgeValue').innerText = val === 0 ? "∞" : val;
+    });
+
+    document.getElementById('exportBtn').addEventListener('click', () => {
+        if (!vm) return;
+        const json = vm.exportState();
+        const blob = new Blob([json], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "bio-programs-state.json";
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('importBtn').addEventListener('click', () => {
+        document.getElementById('importFile').click();
+    });
+
+    document.getElementById('importFile').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const json = e.target.result;
+            try {
+                // Pause before loading
+                isRunning = false;
+                cancelAnimationFrame(animationId);
+
+                vm.importState(json);
+
+                // Update UI to reflect loaded state
+                document.getElementById('maxAgeRange').value = vm.maxAge;
+                document.getElementById('maxAgeValue').innerText = vm.maxAge === 0 ? "∞" : vm.maxAge;
+
+                draw();
+                updateStats();
+                drawPopulationGraph();
+                alert("Status geladen!");
+            } catch (err) {
+                console.error(err);
+                alert("Fehler beim Laden: " + err.message);
+            }
+        };
+        reader.readAsText(file);
     });
 
     document.getElementById('memoryCanvas').addEventListener('click', (e) => {
