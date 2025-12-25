@@ -20,6 +20,7 @@ Die Simulation besteht aus einer Virtuellen Maschine (VM) mit einer benutzerdefi
     *   *Smart Loop*: Ein kompakter Replikator, der eine selbst-zurücksetzende Schleife verwendet. Er ist robuster und effizienter.
     *   *Hyper Replicator*: Eine hochentwickelte Spezies mit einer "Unrolled Loop"-Strategie. Sie kopiert zwei Wörter pro Iteration und verwendet eine Split-Loop-Technik, um Pointer-Überläufe zu vermeiden. Schneller, aber komplexer.
     *   *Killer (Predator)*: Nutzt die Smart-Loop-Engine, trägt aber eine "giftige" Fracht, die `DIE`-Befehle an zufällige Speicherorte schreibt, bevor sie repliziert.
+    *   *Fortress (Defender)*: Eine defensive Variante, die einen Schutzwall aus `DIE`-Befehlen um sich herum aufbaut (-1 und +30 relative Distanz), um Angreifer abzuwehren, bevor sie repliziert.
 *   **Visueller Speicher**: Sehen Sie das Speicherlayout in Echtzeit. Farben repräsentieren verschiedene Abstammungslinien.
 *   **Inspektion**: Klicken Sie auf ein beliebiges Pixel im Raster, um den Befehl an dieser Adresse zu untersuchen.
 *   **Statistiken**: Verfolgen Sie aktive Prozesse, Gesamtzyklen, erreichte maximale Generation und Gesamtmutationen.
