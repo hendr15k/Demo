@@ -294,8 +294,68 @@ function getSpeciesProgram(name) {
         }
     }
 
-    // Both Basic and Killer use the SmartLoop engine.
+    if (name === "Basic") {
+        // Basic Replicator: Separated ADDs, requires Constant for High Bits.
+        // Structure:
+        // [Template] (Data, Index 0)
+        // [Constant] (Data, Index 1, Value 1<<14)
+        // [Boot] (Init Regs, Index 2..5)
+        // [Loop] (Index 6..12)
+        // [Spawn] (Index 13..14)
 
+        const totalSize = 15;
+
+        // Loop is at Index 6. Worker is at Index 6+1 = 7.
+        // Template is at Index 0.
+        // SrcRel = 0 - 7 = -7.
+        // DstRel = Offset - 7.
+        const workerIndex = 7;
+        const srcRel = -workerIndex;
+        const dstRel = offset - workerIndex;
+
+        // 0: Template
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, srcRel, MODES.RELATIVE, dstRel));
+        // 1: Constant (1<<14)
+        program.push(1<<14);
+
+        // 2: MOV #0, %0 (Counter)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 0, MODES.REGISTER, 0));
+        // 3: MOV #Size, %1 (Limit)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, totalSize, MODES.REGISTER, 1));
+        // 4: MOV $Template, %2 (Load Template from Index 0. IP=4. 0-4 = -4)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -4, MODES.REGISTER, 2));
+        // 5: MOV $Constant, %3 (Load Constant from Index 1. IP=5. 1-5 = -4)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -4, MODES.REGISTER, 3));
+
+        // Loop Start (Index 6)
+        // 6: MOV %2, $Worker (Reset Worker at Index 7. Rel=1)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, 1));
+        // 7: Worker (Placeholder)
+        program.push(Instruction.encode(OPCODES.NOP, 0, 0, 0, 0));
+        // 8: ADD #1, %2 (Inc Dst/ValB)
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 2));
+        // 9: ADD %3, %2 (Inc Src/ValA using Register 3)
+        program.push(Instruction.encode(OPCODES.ADD, MODES.REGISTER, 3, MODES.REGISTER, 2));
+        // 10: ADD #1, %0 (Inc Counter)
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
+        // 11: SEQ %0, %1 (If Counter == Limit, Skip Jump)
+        program.push(Instruction.encode(OPCODES.SEQ, MODES.REGISTER, 0, MODES.REGISTER, 1));
+        // 12: JMP Start (Jump to 6. IP=12. Target=6. Offset = -6)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -6, 0, 0));
+
+        // Spawn
+        // 13: SPWN Rel(Offset - Size + ...)
+        // Target = Start + Offset.
+        // Current IP = Start + 13.
+        // Rel = (Start + Offset) - (Start + 13) = Offset - 13.
+        program.push(Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, offset - 13, 0, 0));
+        // 14: DIE
+        program.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0));
+
+        return program;
+    }
+
+    // Default: SmartLoop (used for SmartLoop and Killer base)
     // Structure:
     // [Header]
     // [Template Data] (Never executed, Index 0)
