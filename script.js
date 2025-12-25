@@ -355,6 +355,82 @@ function getSpeciesProgram(name) {
         header.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 15, MODES.RELATIVE, 30));
     }
 
+    if (name === "Teleporter") {
+        // Teleporter (Chaos):
+        // Picks a random address, copies itself there using REG_INDIRECT, and Spawns.
+        // Avoids local crowding by jumping to random locations.
+        // Strategy:
+        // 0: RAND %0 (Dest)
+        // 1: MOV #Size, %1 (Limit)
+        // 2: MOV #0, %2 (Counter)
+        // 3: MOV $Template, %3 (Load Template: MOV REL(Src), @%0)
+        // 4: MOV %3, $Exec (Write to Exec slot)
+        // 5: Exec (Placeholder)
+        // 6: ADD #1, %0 (Inc Dest Addr)
+        // 7: ADD $Const, %3 (Inc Src Offset in Template)
+        // 8: ADD #1, %2 (Inc Counter)
+        // 9: SEQ %2, %1 (Check Limit)
+        // 10: JMP Loop (Back to 4)
+        // 11: SUB %1, %0 (Restore Start Addr)
+        // 12: SPWN @%0
+        // 13: DIE
+        // 14: [Template Data]
+        // 15: [Constant Data]
+
+        const totalSize = 16;
+        const execIndex = 5;
+        const loopStartIndex = 4;
+
+        // Template: MOV REL(Start - Exec), @%0
+        // Start is Index 0. Exec is Index 5.
+        // SrcRel = -5.
+        // DstMode = REG_INDIRECT (3), DstVal = 0 (Register 0).
+        const template = Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -5, MODES.REG_INDIRECT, 0);
+
+        // Constant: Add 1 to Src (High 12 bits of valA).
+        // valA is bits 14..25. 1<<14.
+        const constant = 1 << 14;
+
+        // 0: RAND %0
+        program.push(Instruction.encode(OPCODES.RAND, 0, 0, MODES.REGISTER, 0));
+        // 1: MOV #Size, %1
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, totalSize, MODES.REGISTER, 1));
+        // 2: MOV #0, %2
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 0, MODES.REGISTER, 2));
+        // 3: MOV $Template, %3. Template at 14. 14-3=11.
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 11, MODES.REGISTER, 3));
+
+        // Loop Start (4)
+        // 4: MOV %3, $Exec. Exec at 5. 5-4=1.
+        program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 3, MODES.RELATIVE, 1));
+        // 5: Exec (NOP)
+        program.push(0);
+        // 6: ADD #1, %0
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
+        // 7: ADD $Const, %3. Const at 15. 15-7=8.
+        program.push(Instruction.encode(OPCODES.ADD, MODES.RELATIVE, 8, MODES.REGISTER, 3));
+        // 8: ADD #1, %2
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 2));
+        // 9: SEQ %2, %1
+        program.push(Instruction.encode(OPCODES.SEQ, MODES.REGISTER, 2, MODES.REGISTER, 1));
+        // 10: JMP Loop (4). 4-10 = -6.
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -6, 0, 0));
+
+        // 11: SUB %1, %0
+        program.push(Instruction.encode(OPCODES.SUB, MODES.REGISTER, 1, MODES.REGISTER, 0));
+        // 12: SPWN @%0
+        program.push(Instruction.encode(OPCODES.SPWN, MODES.REG_INDIRECT, 0, 0, 0));
+        // 13: DIE
+        program.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0));
+
+        // 14: Template
+        program.push(template);
+        // 15: Constant
+        program.push(constant);
+
+        return program;
+    }
+
     if (name === "Hyper") {
         // Hyper Replicator v4: Robust Split-Loop with Workers at End.
         // Fixes "Packed ADD Carry" bug by ensuring negative offsets never wrap to 0.
@@ -719,6 +795,21 @@ function initRandomSoup() {
     drawPopulationGraph();
 }
 
+function initTournament() {
+    vm = new VM();
+
+    // Corners
+    const step = MEMORY_SIZE / 4;
+    placeSpecies("Basic", 0);
+    placeSpecies("SmartLoop", step);
+    placeSpecies("Killer", step * 2);
+    placeSpecies("Teleporter", step * 3);
+
+    draw();
+    updateStats();
+    drawPopulationGraph();
+}
+
 function loop() {
     if (!isRunning) return;
 
@@ -858,6 +949,12 @@ if (typeof document !== 'undefined') {
         isRunning = false;
         cancelAnimationFrame(animationId);
         initRandomSoup();
+    });
+
+    document.getElementById('tournamentBtn').addEventListener('click', () => {
+        isRunning = false;
+        cancelAnimationFrame(animationId);
+        initTournament();
     });
 
     document.getElementById('spawnBtn').addEventListener('click', () => {
