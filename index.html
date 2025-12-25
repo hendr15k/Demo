@@ -1,36 +1,37 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bio-Programs</title>
+    <title>Bio-Programme</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="container">
-        <h1>Bio-Programs: Struggle for Cycles</h1>
+        <h1>Bio-Programme: Kampf um CPU-Zyklen</h1>
         <div id="controls">
             <button id="startBtn">Start</button>
             <button id="pauseBtn">Pause</button>
+            <button id="stepBtn">Schritt</button>
             <button id="resetBtn">Reset</button>
-            <button id="randomSoupBtn">Random Soup</button>
+            <button id="randomSoupBtn">Ursuppe</button>
             <select id="speciesSelect">
                 <option value="Basic">Basic Replicator</option>
                 <option value="SmartLoop">Smart Loop</option>
                 <option value="Hyper">Hyper Replicator</option>
-                <option value="Killer">Killer (Predator)</option>
-                <option value="Fortress">Fortress (Defender)</option>
+                <option value="Killer">Killer (Räuber)</option>
+                <option value="Fortress">Fortress (Verteidiger)</option>
             </select>
-            <label>Speed: <input type="range" id="speedRange" min="1" max="100" value="50"></label>
+            <label>Geschwindigkeit: <input type="range" id="speedRange" min="1" max="100" value="50"></label>
             <label>Mutation: <input type="range" id="mutationRange" min="0" max="100" value="1"> <span id="mutationValue">0.1%</span></label>
         </div>
         <div id="statsContainer">
-            <span id="stats">Active Processes: 0 | Cycles: 0</span>
+            <span id="stats">Aktive Prozesse: 0 | Zyklen: 0</span>
         </div>
         <canvas id="memoryCanvas" width="512" height="512"></canvas>
         <canvas id="populationGraph" width="512" height="100" style="background-color: #111; border: 1px solid #333; margin-top: 5px;"></canvas>
         <div id="info">
-            <p>Each pixel represents a memory byte. Colors indicate ownership/activity.</p>
+            <p>Jedes Pixel repräsentiert ein Byte im Speicher. Farben zeigen Besitz/Aktivität an.</p>
         </div>
     </div>
     <script src="script.js"></script>
