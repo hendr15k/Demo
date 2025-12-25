@@ -73,7 +73,15 @@ class Process {
         this.alive = true;
         this.age = 0;
         this.gen = parent ? parent.gen + 1 : 0;
-        this.color = parent ? parent.color : `hsl(${Math.random() * 360}, 100%, 50%)`;
+
+        if (parent) {
+             this.hue = parent.hue + (Math.random() * 20 - 10); // +/- 10 deg variation
+             if (this.hue < 0) this.hue += 360;
+             if (this.hue > 360) this.hue -= 360;
+        } else {
+             this.hue = Math.random() * 360;
+        }
+        this.color = `hsl(${Math.floor(this.hue)}, 100%, 50%)`;
     }
 }
 
@@ -751,7 +759,7 @@ function updateStats() {
         for (const p of vm.processes) {
             if (p.gen > maxGen) maxGen = p.gen;
         }
-        stats.innerText = `Processes: ${vm.processes.length} | Cycles: ${vm.cycles} | Max Gen: ${maxGen} | Mutations: ${vm.totalMutations}`;
+        stats.innerText = `Prozesse: ${vm.processes.length} | Zyklen: ${vm.cycles} | Max Gen: ${maxGen} | Mutationen: ${vm.totalMutations}`;
     }
 }
 
@@ -767,6 +775,15 @@ if (typeof document !== 'undefined') {
     document.getElementById('pauseBtn').addEventListener('click', () => {
         isRunning = false;
         cancelAnimationFrame(animationId);
+    });
+
+    document.getElementById('stepBtn').addEventListener('click', () => {
+        if (!isRunning && vm) {
+            vm.step();
+            draw();
+            updateStats();
+            drawPopulationGraph();
+        }
     });
 
     document.getElementById('resetBtn').addEventListener('click', () => {
