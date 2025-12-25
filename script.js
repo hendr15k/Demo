@@ -44,18 +44,18 @@ class Instruction {
         let word = 0;
         word |= (op & 0xF) << 28;
         word |= (modeA & 0x3) << 26;
-        word |= (valA & 0xFFF) << 14;
+        word |= (valA & FIELD_MASK) << 14;
         word |= (modeB & 0x3) << 12;
-        word |= (valB & 0xFFF);
+        word |= (valB & FIELD_MASK);
         return word;
     }
 
     static decode(word) {
         const op = (word >>> 28) & 0xF;
         const modeA = (word >>> 26) & 0x3;
-        let valA = (word >>> 14) & 0xFFF;
+        let valA = (word >>> 14) & FIELD_MASK;
         const modeB = (word >>> 12) & 0x3;
-        let valB = word & 0xFFF;
+        let valB = word & FIELD_MASK;
 
         if (valA & 0x800) valA |= 0xFFFFF000;
         if (valB & 0x800) valB |= 0xFFFFF000;
@@ -153,7 +153,6 @@ class VM {
             const instr = Instruction.decode(instrWord);
 
             let newIP = p.ip + 1;
-            let jumped = false;
 
             try {
                 switch (instr.opcode) {
@@ -201,7 +200,6 @@ class VM {
                         const target = this.getAddr(p, instr.modeA, instr.valA);
                         if (target >= 0) {
                             newIP = target;
-                            jumped = true;
                         }
                         break;
                     }
@@ -211,7 +209,6 @@ class VM {
                             const target = this.getAddr(p, instr.modeA, instr.valA);
                              if (target >= 0) {
                                 newIP = target;
-                                jumped = true;
                             }
                         }
                         break;
@@ -222,7 +219,6 @@ class VM {
                             const target = this.getAddr(p, instr.modeA, instr.valA);
                              if (target >= 0) {
                                 newIP = target;
-                                jumped = true;
                             }
                         }
                         break;
@@ -282,6 +278,123 @@ class VM {
     }
 }
 
+// --- Species Generation ---
+
+function getSpeciesProgram(name) {
+    const offset = 128; // Standard distance for children
+    const program = [];
+
+    // Header logic
+    let header = [];
+    if (name === "Killer") {
+        // Shoots random zeros into memory before replicating
+        for(let k=0; k<5; k++) {
+            header.push(Instruction.encode(OPCODES.RAND, 0, 0, MODES.REGISTER, 0));
+            header.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 15, MODES.REG_INDIRECT, 0));
+        }
+    }
+
+    // Both Basic and Killer use the SmartLoop engine.
+
+    // Structure:
+    // [Header]
+    // [Template Data] (Never executed, Index 0)
+    // [Constant Data] (16385, Index 1)
+    // [Boot] (Init registers, Index 2, 3, 4, 5)
+    // [Loop] (Copy -> Increment -> Check -> Loop)
+    // [Spawn]
+
+    // Offsets
+    const headerSize = header.length;
+    const templateSize = 1;
+    const constantSize = 1; // New
+    const bootSize = 4; // Was 3. Now 4 instructions (Init i, Limit, Template, Constant)
+    const loopBodySize = 7;
+    const spawnSize = 2; // SPWN, DIE
+
+    const totalSize = headerSize + templateSize + constantSize + bootSize + loopBodySize + spawnSize;
+
+    // indices relative to start of SmartLoop part
+    // Template: 0
+    // Constant: 1
+    // Boot: 2..5
+    // Loop: 6..12
+
+    // Worker Index Calculation:
+    // Loop starts at 6.
+    // Loop body: SNE, JMP, MOV(Reset), WORKER, ADD, ADD, JMP.
+    // Worker is at index 3 of Loop Body.
+    // So Global Worker Index = 6 + 3 = 9.
+
+    // Template Instruction: MOV $(Src), $(Dst)
+    // SrcRel = 0 - WorkerIndex = -WorkerIndex.
+    // DstRel = Offset - WorkerIndex.
+
+    const workerIndex = headerSize + 9;
+    const srcRel = -workerIndex;
+    const dstRel = offset - workerIndex;
+
+    const templateInstr = Instruction.encode(OPCODES.MOV, MODES.RELATIVE, srcRel, MODES.RELATIVE, dstRel);
+    const constantVal = 16385; // 1<<14 | 1
+
+    // Add Header
+    program.push(...header);
+
+    // Add Template (Data)
+    program.push(templateInstr);
+
+    // Add Constant (Data)
+    program.push(constantVal);
+
+    // Boot
+    // 0: MOV #0, %0 (i)
+    program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 0, MODES.REGISTER, 0));
+    // 1: MOV #Size, %1 (Limit)
+    program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, totalSize, MODES.REGISTER, 1));
+    // 2: MOV $Template, %2 (Load Template from Index 0)
+    // Boot starts at Index 2 relative to SmartLoop.
+    // Current IP (for this instr) is Index 4 (2+2).
+    // Template is at Index 0.
+    // Rel Offset = 0 - 4 = -4.
+    program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -4, MODES.REGISTER, 2));
+    // 3: MOV $Constant, %3 (Load Constant from Index 1)
+    // Current IP is Index 5.
+    // Constant is at Index 1.
+    // Rel Offset = 1 - 5 = -4.
+    program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -4, MODES.REGISTER, 3));
+
+    // Loop
+    // 0: SNE %0, %1 (Check done: if i != limit, skip jump to spawn)
+    program.push(Instruction.encode(OPCODES.SNE, MODES.REGISTER, 0, MODES.REGISTER, 1));
+    // 1: JMP Spawn (Skip 5 instructions: MOV, WORK, ADD, ADD, JMP) -> Jump +6
+    program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 6, 0, 0));
+
+    // 2: MOV %2, $1 (Reset Worker. Worker is at +1)
+    program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, 1));
+
+    // 3: Worker (Placeholder)
+    program.push(Instruction.encode(OPCODES.NOP, 0, 0, 0, 0));
+
+    // 4: ADD %3, %2 (Inc Template Reg using Constant in %3)
+    program.push(Instruction.encode(OPCODES.ADD, MODES.REGISTER, 3, MODES.REGISTER, 2));
+
+    // 5: ADD #1, %0 (Inc Counter)
+    program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
+
+    // 6: JMP -6 (Back to SNE)
+    program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -6, 0, 0));
+
+    // Spawn
+    // SPWN (Offset). Relative to *this* instruction.
+    // We want to spawn at `Start + Offset`.
+    // This instruction index = TotalSize - 2.
+    // Relative = `(Start + Offset) - (Start + TotalSize - 2)` = `Offset - TotalSize + 2`.
+    program.push(Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, offset - totalSize + 2, 0, 0));
+    program.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0));
+
+    return program;
+}
+
 // --- Visualization & UI ---
 
 let vm;
@@ -289,111 +402,18 @@ let animationId;
 let isRunning = false;
 let speed = 50;
 
-function init() {
+function init(speciesName = "Basic") {
     vm = new VM();
 
-    // Inject Ancestor
-    // A simple replicator:
-    // It needs to copy its own code to a new location.
-    // Length of program = L.
-    // 0: MOV $0, $(OFFSET)  ; Copy instr at 0 to Offset
-    // 1: MOV $1, $(OFFSET)
-    // ...
-    // L: SPWN $(OFFSET)
-    // L+1: JMP 0 (Restart or just wait)
+    const program = getSpeciesProgram(speciesName);
+    const startAddr = Math.floor(MEMORY_SIZE / 2);
 
-    // Better Loop:
-    // Registers: R0 (Source Index), R1 (Dest Index), R2 (Counter)
-    // 0: MOV #0, %0        ; R0 = 0
-    // 1: MOV #100, %1      ; R1 = 100 (Offset to copy to, relatively?)
-    //    Wait, relative addressing is easier.
-    //    Let's try a tight loop copying code.
-    //    Source: IP + index
-    //    Dest: IP + Offset + index
-
-    // Ancestor Code:
-    // 0: MOV #0, %0      (Init counter i=0)
-    // 1: MOV #350, %1    (Offset D=350)
-    // Loop:
-    // 2: MOV $0(%0), $0(%1) (Copy [IP+i] to [IP+D+i]?? No we don't have indexed relative)
-    // We have REG_INDIRECT ($R0). That is absolute address.
-    // We need to calculate absolute addresses?
-    // JMP/MOV instructions use Relative addressing mostly.
-
-    // Replicator Strategy using Relative Addressing:
-    // We need to read self.
-    // MOV $0, $Offset
-    // But we need to increment addresses.
-    // We can modify the instruction itself! (Self-modifying code)
-
-    // 0: MOV $0, $50    ; Copy instruction at IP+0 to IP+50.
-    // 1: ADD #1, $0.-1  ; Increment source field of instruction 0 (Wait, complicated)
-    // 2: ADD #1, $0.-2  ; Increment dest field of instruction 0
-
-    // Let's use Registers for pointers.
-    // R0 = Source Address (Absolute)
-    // R1 = Dest Address (Absolute)
-    // How to get current IP into Register?
-    // JMP can't push to stack.
-    // We can assume we start at 0.
-
-    // Hardcoded replicator for now:
-    // Copy 8 instructions.
-    // Source: 0. Dest: random?
-
-    const PROG_SIZE = 8;
-    const TARGET_OFFSET = 100; // Copy to +100
-
-    // We will hardcode the MOV instructions for simplicity in this demo version
-    // MOV <Src>, <Dst>
-    // 0: MOV $0, $100
-    // 1: MOV $0, $100
-    // ...
-    // But this copies instruction 0 and 1 correctly?
-    // "MOV $0, $100" at index 0 reads index 0 and writes to index 100.
-    // "MOV $0, $100" at index 1 reads index 1 and writes to index 101.
-    // YES! Relative addressing makes this trivial!
-    // If I have "MOV $0, $100" at address X.
-    // It reads X+0. Writes X+100.
-    // If I have the *same* instruction "MOV $0, $100" at address X+1.
-    // It reads X+1+0. Writes X+1+100.
-
-    // So a replicator is just N instructions of "MOV $0, $TargetOffset"
-    // Followed by "SPWN $TargetOffset"
-    // Followed by "JMP 0" (Start over? or find new spot)
-
-    const offset = 128;
-
-    // Create the "Cell"
-    const program = [];
-
-    // The loop body size is, say, 10 instructions.
-    // We need to copy 10 instructions.
-    for(let i=0; i<10; i++) {
-        // MOV $0, $offset
-        // Reads (IP+0), Writes (IP+offset).
-        // Since IP increments, this copies the current instruction to the relative target.
-        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 0, MODES.RELATIVE, offset));
+    // Clear area
+    for(let i=0; i<program.length + 50; i++) {
+        vm.memory[startAddr+i] = 0;
+        vm.memoryMap[startAddr+i] = null;
     }
 
-    // Spawn the child
-    // SPWN $offset (relative to this instruction's IP)
-    // Note: The SPWN instruction is at index 10.
-    // The child code starts at `offset` relative to index 0?
-    // No, the child code was written to [IP - 10 + offset] ... [IP - 1 + offset]
-    // The first instruction was written to (IP of instr 0) + offset.
-    // Current IP is (IP of instr 0) + 10.
-    // So we need to spawn at (IP - 10 + offset).
-    program.push(Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, offset - 10, 0, 0));
-
-    // Jump to start (IP - 11) to repeat?
-    // Maybe mutate the offset to spread?
-    // ADD #128, $-2 (Modify the offset of the MOV instructions? No, that's hard)
-    // Just die.
-    program.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0));
-
-    // Load to memory
-    const startAddr = Math.floor(MEMORY_SIZE / 2);
     for(let i=0; i<program.length; i++) {
         vm.memory[startAddr + i] = program[i];
         vm.memoryMap[startAddr + i] = 'white';
@@ -441,10 +461,10 @@ function draw() {
 
         if (vm.memoryMap[i]) {
             ctx.fillStyle = vm.memoryMap[i];
-            ctx.fillRect(x, y, cellW - 1, cellH - 1);
+            ctx.fillRect(x, y, cellW, cellH);
         } else if (vm.memory[i] !== 0) {
             ctx.fillStyle = '#333'; // Dead data
-            ctx.fillRect(x, y, cellW - 1, cellH - 1);
+            ctx.fillRect(x, y, cellW, cellH);
         }
     }
 
@@ -455,7 +475,7 @@ function draw() {
         const y = Math.floor(i / cols) * cellH;
 
         ctx.fillStyle = '#fff';
-        ctx.fillRect(x+1, y+1, cellW-3, cellH-3);
+        ctx.fillRect(x+1, y+1, cellW-2, cellH-2);
     }
 }
 
@@ -487,7 +507,8 @@ if (typeof document !== 'undefined') {
     document.getElementById('resetBtn').addEventListener('click', () => {
         isRunning = false;
         cancelAnimationFrame(animationId);
-        init();
+        const species = document.getElementById('speciesSelect').value;
+        init(species);
     });
 
     document.getElementById('speedRange').addEventListener('input', (e) => {
@@ -524,8 +545,8 @@ if (typeof document !== 'undefined') {
             info.innerHTML = `
                 <p>Addr: ${idx}</p>
                 <p>Op: ${opNames} (${instr.opcode})</p>
-                <p>ModeA: ${instr.modeA}, ValA: ${instr.valA}</p>
-                <p>ModeB: ${instr.modeB}, ValB: ${instr.valB}</p>
+                <p>ModeA: ${instr.modeA}, ValA: ${instr.valA} (${instr.valA >= 2048 ? instr.valA - 4096 : instr.valA})</p>
+                <p>ModeB: ${instr.modeB}, ValB: ${instr.valB} (${instr.valB >= 2048 ? instr.valB - 4096 : instr.valB})</p>
                 <p>Raw: ${word.toString(16)}</p>
                 <p>Owner Color: <span style="display:inline-block;width:10px;height:10px;background-color:${vm.memoryMap[idx] || 'black'}"></span></p>
             `;
@@ -533,10 +554,10 @@ if (typeof document !== 'undefined') {
     });
 
     // Start
-    init();
+    init("Basic");
 }
 
 // Export for node testing
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { MEMORY_SIZE, OPCODES, MODES, Instruction, VM, Process };
+    module.exports = { MEMORY_SIZE, OPCODES, MODES, Instruction, VM, Process, getSpeciesProgram };
 }

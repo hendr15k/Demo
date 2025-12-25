@@ -15,6 +15,10 @@ The simulation consists of a Virtual Machine (VM) with a custom Instruction Set 
 
 ## Features
 
+*   **Multiple Species**: Choose from different starting organisms with varying strategies:
+    *   *Basic Replicator*: A simple, unrolled loop that copies itself efficiently.
+    *   *Smart Loop*: A compact replicator using a self-resetting loop. It is robust and can carry payloads.
+    *   *Killer (Predator)*: Uses the Smart Loop engine but carries a "venomous" payload that writes `DIE` instructions to random memory locations before replicating.
 *   **Visual Memory**: See the memory layout in real-time. Colors represent different lineages.
 *   **Inspection**: Click on any pixel in the memory grid to inspect the instruction at that address.
 *   **Stats**: Track active processes, total cycles, maximum generation reached, and total mutations.
@@ -53,13 +57,15 @@ Each instruction is a 32-bit word containing:
 
 1.  Clone the repository.
 2.  Open `index.html` in a modern web browser.
-3.  Click "Start" to begin the simulation.
+3.  Select a starting species (e.g., "Smart Loop").
+4.  Click "Start" to begin the simulation.
 
 ## Controls
 
 *   **Start**: Begins the simulation loop.
 *   **Pause**: Stops the simulation.
-*   **Reset**: Clears memory and restarts with a fresh ancestor.
+*   **Reset**: Clears memory and restarts with a fresh instance of the selected species.
+*   **Species Select**: Choose the organism to inject on reset.
 *   **Speed**: Adjusts the number of VM cycles per frame.
 *   **Mutation**: Adjusts the bit-flip probability (0% to 10%).
 *   **Canvas Click**: Click on the grid to see the instruction details in the info box below.
