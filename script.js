@@ -658,24 +658,41 @@ let animationId;
 let isRunning = false;
 let speed = 50;
 
-function init(speciesName = "Basic") {
-    vm = new VM();
-
+function placeSpecies(speciesName, startAddr) {
     const program = getSpeciesProgram(speciesName);
-    const startAddr = Math.floor(MEMORY_SIZE / 2);
 
-    // Clear area
-    for(let i=0; i<program.length + 50; i++) {
-        vm.memory[startAddr+i] = 0;
-        vm.memoryMap[startAddr+i] = null;
+    // Clear area (safety margin)
+    for(let i=0; i<program.length + 20; i++) {
+        const addr = (startAddr + i) % MEMORY_SIZE;
+        vm.memory[addr] = 0;
+        vm.memoryMap[addr] = null;
     }
 
+    // Write program
     for(let i=0; i<program.length; i++) {
-        vm.memory[startAddr + i] = program[i];
-        vm.memoryMap[startAddr + i] = 'white';
+        const addr = (startAddr + i) % MEMORY_SIZE;
+        vm.memory[addr] = program[i];
+        vm.memoryMap[addr] = 'white';
     }
 
     vm.addProcess(startAddr);
+}
+
+function spawnSpecies(speciesName) {
+    if (!vm) return;
+    const program = getSpeciesProgram(speciesName);
+    // Find random address
+    const startAddr = Math.floor(Math.random() * (MEMORY_SIZE - program.length));
+    placeSpecies(speciesName, startAddr);
+    draw();
+    updateStats();
+}
+
+function init(speciesName = "Basic") {
+    vm = new VM();
+    // Start in the middle
+    const startAddr = Math.floor(MEMORY_SIZE / 2);
+    placeSpecies(speciesName, startAddr);
 
     draw();
     updateStats();
@@ -841,6 +858,11 @@ if (typeof document !== 'undefined') {
         isRunning = false;
         cancelAnimationFrame(animationId);
         initRandomSoup();
+    });
+
+    document.getElementById('spawnBtn').addEventListener('click', () => {
+        const species = document.getElementById('speciesSelect').value;
+        spawnSpecies(species);
     });
 
     document.getElementById('speedRange').addEventListener('input', (e) => {
