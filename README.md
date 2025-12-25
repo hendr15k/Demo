@@ -1,80 +1,80 @@
-# Bio-Programs: Struggle for Cycles
+# Bio-Programme: Kampf um CPU-Zyklen
 
-A browser-based simulation of self-replicating programs that compete for memory and CPU cycles. Programs evolve through random bit-flip mutations during copying.
+Eine browserbasierte Simulation von selbst-replizierenden Programmen, die um Speicherplatz und CPU-Zyklen kämpfen. Programme evolvieren durch zufällige Bit-Flips beim Kopieren.
 
-[Play Demo](index.html) (Open this file in your browser)
+[Demo Starten](index.html) (Öffnen Sie diese Datei in Ihrem Browser)
 
-## Overview
+## Übersicht
 
-The simulation consists of a Virtual Machine (VM) with a custom Instruction Set Architecture (ISA). Programs (organisms) reside in a shared memory space (4096 bytes).
+Die Simulation besteht aus einer Virtuellen Maschine (VM) mit einer benutzerdefinierten Befehlssatzarchitektur (ISA). Programme (Organismen) befinden sich in einem gemeinsamen Speicherraum (4096 Bytes).
 
-*   **Memory**: Linear array of 32-bit integers. Visualized as a 64x64 grid.
-*   **Processes**: Independent execution threads (programs). Each has an Instruction Pointer (IP) and 4 Registers.
-*   **Competition**: Processes compete for memory space. Overwriting another program's memory kills or corrupts it.
-*   **Evolution**: When a program writes to memory, there is a small chance (Mutation Rate) of a bit-flip. This changes instructions, potentially creating new behaviors.
+*   **Speicher**: Lineares Array von 32-Bit-Integern. Visualisiert als 64x64-Raster.
+*   **Prozesse**: Unabhängige Ausführungs-Threads (Programme). Jeder hat einen Befehlszeiger (IP) und 4 Register.
+*   **Wettbewerb**: Prozesse konkurrieren um Speicherplatz. Das Überschreiben des Speichers eines anderen Programms tötet oder korrumpiert es.
+*   **Evolution**: Wenn ein Programm in den Speicher schreibt, besteht eine kleine Chance (Mutationsrate) für einen Bit-Flip. Dies verändert Befehle und kann zu neuen Verhaltensweisen führen.
 
-## Features
+## Funktionen
 
-*   **Multiple Species**: Choose from different starting organisms with varying strategies:
-    *   *Basic Replicator*: A simple, unrolled loop that copies itself efficiently.
-    *   *Smart Loop*: A compact replicator using a self-resetting loop. It is robust and can carry payloads.
-    *   *Killer (Predator)*: Uses the Smart Loop engine but carries a "venomous" payload that writes `DIE` instructions to random memory locations before replicating.
-*   **Visual Memory**: See the memory layout in real-time. Colors represent different lineages.
-*   **Inspection**: Click on any pixel in the memory grid to inspect the instruction at that address.
-*   **Stats**: Track active processes, total cycles, maximum generation reached, and total mutations.
-*   **Controls**: Adjustable speed, mutation rate, pause/resume, and reset.
+*   **Verschiedene Spezies**: Wählen Sie aus verschiedenen Startorganismen mit unterschiedlichen Strategien:
+    *   *Basic Replicator*: Eine einfache Schleife, die sich selbst kopiert. Sie ist weniger optimiert und größer als der Smart Loop, dient aber als guter Ausgangspunkt.
+    *   *Smart Loop*: Ein kompakter Replikator, der eine selbst-zurücksetzende Schleife verwendet. Er ist robuster und effizienter.
+    *   *Killer (Predator)*: Nutzt die Smart-Loop-Engine, trägt aber eine "giftige" Fracht, die `DIE`-Befehle an zufällige Speicherorte schreibt, bevor sie repliziert.
+*   **Visueller Speicher**: Sehen Sie das Speicherlayout in Echtzeit. Farben repräsentieren verschiedene Abstammungslinien.
+*   **Inspektion**: Klicken Sie auf ein beliebiges Pixel im Raster, um den Befehl an dieser Adresse zu untersuchen.
+*   **Statistiken**: Verfolgen Sie aktive Prozesse, Gesamtzyklen, erreichte maximale Generation und Gesamtmutationen.
+*   **Steuerung**: Anpassbare Geschwindigkeit, Mutationsrate, Pause/Weiter und Reset.
 
-## Instruction Set Architecture (ISA)
+## Befehlssatzarchitektur (ISA)
 
-Each instruction is a 32-bit word containing:
-*   **Opcode** (4 bits): The operation to perform.
-*   **ModeA** (2 bits), **ValA** (12 bits): First operand.
-*   **ModeB** (2 bits), **ValB** (12 bits): Second operand.
+Jeder Befehl ist ein 32-Bit-Wort, das Folgendes enthält:
+*   **Opcode** (4 Bits): Die auszuführende Operation.
+*   **ModeA** (2 Bits), **ValA** (12 Bits): Erster Operand.
+*   **ModeB** (2 Bits), **ValB** (12 Bits): Zweiter Operand.
 
-### Addressing Modes
-*   `0` **IMMEDIATE**: The value `Val`.
-*   `1` **RELATIVE**: Memory at `IP + Val`.
+### Adressierungsmodi
+*   `0` **IMMEDIATE**: Der Wert `Val`.
+*   `1` **RELATIVE**: Speicher an `IP + Val`.
 *   `2` **REGISTER**: Register `Reg[Val % 4]`.
-*   `3` **REG_INDIRECT**: Memory at absolute address stored in `Reg[Val % 4]`.
+*   `3` **REG_INDIRECT**: Speicher an der absoluten Adresse, die in `Reg[Val % 4]` gespeichert ist.
 
 ### Opcodes
-| Opcode | Mnemonic | Description |
+| Opcode | Mnemonic | Beschreibung |
 | :--- | :--- | :--- |
-| 0 | `NOP` | No Operation. |
-| 1 | `MOV A, B` | Copy value A to destination B. |
-| 2 | `ADD A, B` | Add A to destination B. |
-| 3 | `SUB A, B` | Subtract A from destination B. |
-| 4 | `JMP A` | Jump to address A (relative). |
-| 5 | `JZ A, B` | Jump to A if B is Zero. |
-| 6 | `JNZ A, B` | Jump to A if B is Not Zero. |
-| 7 | `SPWN A` | Spawn a new process at address A. |
-| 8 | `SEQ A, B` | Skip next instruction if A == B. |
-| 9 | `SNE A, B` | Skip next instruction if A != B. |
-| 10 | `RAND B` | Store a random value (0-4095) in B. |
-| 15 | `DIE` | Terminate the current process. |
+| 0 | `NOP` | Keine Operation. |
+| 1 | `MOV A, B` | Kopiere Wert A nach Ziel B. |
+| 2 | `ADD A, B` | Addiere A zum Ziel B. |
+| 3 | `SUB A, B` | Subtrahiere A vom Ziel B. |
+| 4 | `JMP A` | Springe zu Adresse A (relativ). |
+| 5 | `JZ A, B` | Springe zu A, wenn B Null ist. |
+| 6 | `JNZ A, B` | Springe zu A, wenn B nicht Null ist. |
+| 7 | `SPWN A` | Erzeuge einen neuen Prozess an Adresse A. |
+| 8 | `SEQ A, B` | Überspringe den nächsten Befehl, wenn A == B. |
+| 9 | `SNE A, B` | Überspringe den nächsten Befehl, wenn A != B. |
+| 10 | `RAND B` | Speichere einen Zufallswert (0-4095) in B. |
+| 15 | `DIE` | Beende den aktuellen Prozess. |
 
-## How to Run
+## Ausführung
 
-1.  Clone the repository.
-2.  Open `index.html` in a modern web browser.
-3.  Select a starting species (e.g., "Smart Loop").
-4.  Click "Start" to begin the simulation.
+1.  Klonen Sie das Repository.
+2.  Öffnen Sie `index.html` in einem modernen Webbrowser.
+3.  Wählen Sie eine Startspezies (z.B. "Smart Loop").
+4.  Klicken Sie auf "Start", um die Simulation zu beginnen.
 
-## Controls
+## Steuerung
 
-*   **Start**: Begins the simulation loop.
-*   **Pause**: Stops the simulation.
-*   **Reset**: Clears memory and restarts with a fresh instance of the selected species.
-*   **Species Select**: Choose the organism to inject on reset.
-*   **Speed**: Adjusts the number of VM cycles per frame.
-*   **Mutation**: Adjusts the bit-flip probability (0% to 10%).
-*   **Canvas Click**: Click on the grid to see the instruction details in the info box below.
+*   **Start**: Startet die Simulationsschleife.
+*   **Pause**: Stoppt die Simulation.
+*   **Reset**: Löscht den Speicher und startet neu mit einer frischen Instanz der gewählten Spezies.
+*   **Species Select**: Wählen Sie den Organismus, der beim Reset injiziert werden soll.
+*   **Speed**: Passt die Anzahl der VM-Zyklen pro Frame an.
+*   **Mutation**: Passt die Wahrscheinlichkeit für Bit-Flips an (0% bis 10%).
+*   **Canvas Click**: Klicken Sie auf das Raster, um die Befehlsdetails in der Infobox unten zu sehen.
 
-## Development
+## Entwicklung
 
-The core logic is in `script.js`. It is designed to work in both the browser and Node.js (for testing).
+Die Kernlogik befindet sich in `script.js`. Sie ist so konzipiert, dass sie sowohl im Browser als auch in Node.js (für Tests) funktioniert.
 
-To run tests:
+Tests ausführen:
 ```bash
 node test_vm.js
 node test_rand.js
