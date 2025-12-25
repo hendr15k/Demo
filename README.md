@@ -18,6 +18,7 @@ Die Simulation besteht aus einer Virtuellen Maschine (VM) mit einer benutzerdefi
 *   **Verschiedene Spezies**: Wählen Sie aus verschiedenen Startorganismen mit unterschiedlichen Strategien:
     *   *Basic Replicator*: Eine einfache Schleife, die sich selbst kopiert. Sie ist weniger optimiert und größer als der Smart Loop, dient aber als guter Ausgangspunkt.
     *   *Smart Loop*: Ein kompakter Replikator, der eine selbst-zurücksetzende Schleife verwendet. Er ist robuster und effizienter.
+    *   *Hyper Replicator*: Eine hochentwickelte Spezies mit einer "Unrolled Loop"-Strategie. Sie kopiert zwei Wörter pro Iteration und verwendet eine Split-Loop-Technik, um Pointer-Überläufe zu vermeiden. Schneller, aber komplexer.
     *   *Killer (Predator)*: Nutzt die Smart-Loop-Engine, trägt aber eine "giftige" Fracht, die `DIE`-Befehle an zufällige Speicherorte schreibt, bevor sie repliziert.
 *   **Visueller Speicher**: Sehen Sie das Speicherlayout in Echtzeit. Farben repräsentieren verschiedene Abstammungslinien.
 *   **Inspektion**: Klicken Sie auf ein beliebiges Pixel im Raster, um den Befehl an dieser Adresse zu untersuchen.
@@ -70,7 +71,7 @@ Jeder Befehl ist ein 32-Bit-Wort, das Folgendes enthält:
 *   **Random Soup**: Startet die Simulation mit zufälligem Speicherinhalt.
 *   **Species Select**: Wählen Sie den Organismus, der beim Reset injiziert werden soll.
 *   **Speed**: Passt die Anzahl der VM-Zyklen pro Frame an.
-*   **Mutation**: Passt die Wahrscheinlichkeit für Bit-Flips an (0% bis 10%).
+*   **Mutation**: Passt die Wahrscheinlichkeit für Bit-Flips an (0% bis 10%). Der aktuelle Wert wird neben dem Schieberegler angezeigt.
 *   **Canvas Click**: Klicken Sie auf das Raster, um die Befehlsdetails in der Infobox unten zu sehen.
 
 ## Entwicklung
