@@ -1,63 +1,78 @@
-# Bio-Programme: Kampf um CPU-Zyklen
+# Bio-Programme: Kampf um CPU-Zyklen und Speicher
 
-Eine browserbasierte Simulation von selbst-replizierenden Programmen, die um Speicherplatz und CPU-Zyklen kämpfen. Programme evolvieren durch zufällige Bit-Flips beim Kopieren und zeigen interessante evolutionäre Verhaltensweisen.
+Willkommen zu **Bio-Programme**, einer browserbasierten Simulation künstlichen Lebens. In dieser virtuellen Umgebung konkurrieren selbst-replizierende Computerprogramme um begrenzten Speicherplatz und Rechenzeit. Sie kämpfen ums Überleben, vermehren sich und evolvieren durch zufällige Mutationen.
 
 [Demo Starten](index.html) (Öffnen Sie diese Datei in Ihrem Browser)
 
-## Übersicht
+## 🧬 Wie es funktioniert
 
-Die Simulation besteht aus einer Virtuellen Maschine (VM) mit einer benutzerdefinierten Befehlssatzarchitektur (ISA). Programme (Organismen) befinden sich in einem gemeinsamen Speicherraum (4096 Bytes).
+Die Simulation basiert auf einer "Core War"-ähnlichen Arena (einem gemeinsamen Speicherblock), in dem mehrere Programme gleichzeitig ausgeführt werden.
 
-*   **Speicher**: Lineares Array von 32-Bit-Integern. Visualisiert als 64x64-Raster.
-*   **Prozesse**: Unabhängige Ausführungs-Threads (Programme). Jeder hat einen Befehlszeiger (IP) und 4 Register.
-*   **Wettbewerb**: Prozesse konkurrieren um Speicherplatz. Das Überschreiben des Speichers eines anderen Programms tötet oder korrumpiert es.
-*   **Evolution**:
-    *   **Mutation**: Wenn ein Programm in den Speicher schreibt, besteht eine kleine Chance (Mutationsrate) für einen Bit-Flip.
-    *   **Farbevolution**: Kinder erben die Farbe ihrer Eltern mit einer leichten Variation des Farbtons. Dies ermöglicht die visuelle Nachverfolgung von Abstammungslinien.
+### Die Virtuelle Maschine (VM)
+*   **Speicher**: Ein Ringpuffer aus 4096 Speicherzellen (32-Bit Integer).
+*   **Prozesse**: Jedes Programm ist ein Prozess mit einem Befehlszeiger (Instruction Pointer) und 4 Registern.
+*   **Ausführung**: Die VM verteilt CPU-Zyklen reihum an alle aktiven Prozesse.
 
-## Funktionen
+### Evolution
+*   **Replikation**: Programme müssen ihren eigenen Code in einen neuen Speicherbereich kopieren und dort einen neuen Prozess starten (`SPWN`).
+*   **Mutation**: Bei jedem Schreibzugriff in den Speicher gibt es eine kleine Chance (`Mutationsrate`), dass ein Bit kippt. Dies kann Programme zerstören, aber auch neue, effizientere Varianten hervorbringen.
+*   **Selektion**: Programme, die schneller kopieren oder besser verteidigen, verdrängen andere.
 
-*   **Verschiedene Spezies**:
-    *   *Basic Replicator*: Eine einfache Schleife, die sich selbst kopiert.
-    *   *Smart Loop*: Ein kompakter, robuster Replikator.
-    *   *Hyper Replicator*: Eine hochentwickelte Spezies mit "Unrolled Loop" und "Split-Loop"-Technik für maximale Effizienz.
-    *   *Killer (Räuber)*: Basiert auf Smart Loop, schreibt aber zufällige Daten in den Speicher, bevor er repliziert.
-    *   *Fortress (Verteidiger)*: Baut einen Schutzwall aus `DIE`-Befehlen um sich herum auf.
-*   **Visueller Speicher**: Echtzeit-Raster. Klicken Sie auf Pixel, um Befehle zu inspizieren.
-*   **Populationsgraph**: Visualisierung der Anzahl aktiver Prozesse über die Zeit.
-*   **Ursuppe (Random Soup)**: Starten Sie mit zufälligem Speicherinhalt, um spontane Entstehung von Replikatoren zu beobachten.
-*   **Maximales Alter**: Legen Sie eine Lebensspanne für Prozesse fest, um alten Code automatisch zu bereinigen und Evolution zu beschleunigen.
-*   **Speichern/Laden**: Exportieren und Importieren Sie den kompletten Simulationszustand als JSON-Datei.
-*   **Steuerung**: Geschwindigkeit, Mutationsrate, Pause/Schritt/Reset.
+## 🚀 Funktionen
 
-## Bedienung
+*   **Visueller Speicher**: Beobachten Sie den Kampf in Echtzeit auf einem 64x64 Raster.
+*   **Spezies-Auswahl**: Wählen Sie aus verschiedenen vordefinierten Organismen:
+    *   *Basic Replicator*: Einfach und verständlich.
+    *   *Smart Loop*: Optimiert und kompakt.
+    *   *Hyper Replicator*: Hochentwickelt, nutzt "Unrolled Loops" für maximale Geschwindigkeit.
+    *   *Killer*: Zerstört aktiv Speicherbereiche vor der Replikation.
+    *   *Fortress*: Baut Schutzwälle aus tödlichen Befehlen (`DIE`).
+*   **Spawn-Funktion**: Fügen Sie jederzeit neue Spezies in die laufende Simulation ein, um "Turniere" zu veranstalten oder das Gleichgewicht zu stören.
+*   **Ursuppe**: Starten Sie mit reinem Chaos und sehen Sie zu, ob Leben entsteht.
+*   **Kontrolle**: Passen Sie Geschwindigkeit, Mutationsrate und Lebensdauer in Echtzeit an.
+*   **Speichern/Laden**: Sichern Sie interessante Zustände und teilen Sie sie.
 
-1.  Öffnen Sie `index.html` in einem modernen Webbrowser.
-2.  Wählen Sie eine Startspezies (z.B. "Smart Loop").
-3.  Klicken Sie auf **Start**, um die Simulation zu beginnen.
+## 🎮 Bedienung
+
+1.  Öffnen Sie `index.html` in Ihrem Browser.
+2.  Wählen Sie eine Spezies aus dem Dropdown-Menü.
+3.  Klicken Sie auf **Reset**, um mit dieser Spezies neu zu starten.
+4.  Oder klicken Sie auf **Spawn**, um Exemplare der gewählten Spezies in die laufende Schlacht zu werfen.
 
 ### Steuerelemente
 
-*   **Start**: Startet die Simulation.
-*   **Pause**: Pausiert die Simulation.
-*   **Schritt**: Führt einen einzelnen Simulationsschritt aus (nur im Pausenmodus). Nützlich zur Analyse.
-*   **Reset**: Löscht alles und startet neu.
-*   **Ursuppe**: Startet mit zufälligem Speicher.
-*   **Geschwindigkeit**: Regelt die VM-Zyklen pro Frame.
-*   **Mutation**: Regelt die Bit-Flip-Wahrscheinlichkeit.
-*   **Max Alter**: Begrenzt die Lebensdauer eines Prozesses (0 = Unendlich). Ältere Prozesse sterben automatisch.
-*   **Save/Load**: Speichert den aktuellen Zustand in eine Datei oder lädt einen Zustand.
+*   **Start/Pause**: Steuert den Simulationslauf.
+*   **Schritt**: Einzelner Zyklus (für Debugging).
+*   **Reset**: Löscht den Speicher und platziert die gewählte Spezies in die Mitte.
+*   **Spawn**: Fügt die gewählte Spezies an einer zufälligen Position hinzu (ohne Reset).
+*   **Ursuppe**: Füllt den Speicher mit Zufallsdaten.
+*   **Geschwindigkeit**: Wie viele VM-Zyklen pro Frame berechnet werden.
+*   **Mutation**: Wahrscheinlichkeit für Bit-Flips beim Schreiben.
+*   **Max Alter**: Begrenzt die Lebensdauer von Prozessen (verhindert Stagnation durch "unsterbliche" Leichen).
 
-## Technische Details
+## 🛠 Technische Details
 
-Die Simulation läuft in `script.js` und implementiert eine eigene VM.
+Die Simulation ist in reinem JavaScript (`script.js`) geschrieben und nutzt HTML5 Canvas für die Darstellung.
 
-### Befehlssatz (Auszug)
-Jeder Befehl ist 32-Bit: Opcode (4), ModeA (2), ValA (12), ModeB (2), ValB (12).
-Wichtige Opcodes: `MOV`, `ADD`, `SUB`, `JMP`, `JZ`, `SPWN` (Neuer Prozess), `DIE` (Prozess beenden), `RAND`.
+### Befehlssatz (ISA)
+Die VM nutzt eine RISC-ähnliche Architektur mit 32-Bit Befehlen:
+*   `MOV`, `ADD`, `SUB`: Arithmetik und Datentransfer.
+*   `JMP`, `JZ`, `JNZ`: Sprünge und Bedingungen.
+*   `SEQ`, `SNE`: Vergleiche (Skip Equal/Not Equal).
+*   `SPWN`: Erzeugt einen neuen Prozess an einer Zieladresse.
+*   `DIE`: Beendet den aktuellen Prozess sofort.
+*   `RAND`: Erzeugt Zufallszahlen (wichtig für Killer/Evolution).
 
-### Tests
-Für die Entwicklung können Node.js-Tests ausgeführt werden:
+### Adressierungsmodi
+*   Immediate (#)
+*   Relative ($)
+*   Register (%)
+*   Register Indirect (@)
+
+## Entwicklung & Tests
+
+Um Änderungen an der VM-Logik zu testen, können Sie die Node.js-Tests ausführen:
+
 ```bash
 node test_vm.js
 ```
