@@ -420,19 +420,65 @@ function getSpeciesProgram(name) {
 
     // Header logic
     let header = [];
+    const dieInstr = Instruction.encode(OPCODES.DIE, 0, 0, 0, 0);
+
     if (name === "Killer") {
-        // Shoots random zeros into memory before replicating
-        for(let k=0; k<5; k++) {
+        // Shoots DIE instructions into memory before replicating
+        // Strategy:
+        // Load DIE instruction from memory (relative) into register or just write it.
+        // Since we repeat this, we can optimize.
+        // We will store the DIE instruction as a constant at the end of the header.
+
+        const headerLoopSize = 2; // RAND + MOV
+        const iterations = 5;
+        const totalHeaderSize = iterations * headerLoopSize + 1; // +1 for Data
+
+        // Data index relative to start of header
+        const dataIndex = iterations * headerLoopSize;
+
+        for(let k=0; k<iterations; k++) {
+            // Index of this instruction in the header sequence
+            const currentIdx = k * headerLoopSize;
+
+            // 1. RAND %0 (Generate random address)
             header.push(Instruction.encode(OPCODES.RAND, 0, 0, MODES.REGISTER, 0));
-            header.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 15, MODES.REG_INDIRECT, 0));
+
+            // 2. MOV $Data, @%0 (Write DIE to random address)
+            // IP is currentIdx + 1. Data is at dataIndex.
+            // Offset = dataIndex - (currentIdx + 1).
+            header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, dataIndex - (currentIdx + 1), MODES.REG_INDIRECT, 0));
         }
+
+        // Push Data (DIE instruction)
+        header.push(dieInstr);
     }
 
     if (name === "Fortress") {
         // Fortress: Writes DIE instructions around itself before replicating
         // Writes DIE (Opcode 15) to -1 (Behind) and +30 (Ahead)
-        header.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 15, MODES.RELATIVE, -1));
-        header.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 15, MODES.RELATIVE, 30));
+        // We need to load DIE instruction from a constant.
+
+        // Structure:
+        // 0: MOV $Data, $-1 (Write Behind)
+        // 1: MOV $Data, $30 (Write Ahead)
+        // 2: Data (DIE)
+
+        const dataIndex = 2;
+
+        // 0: MOV $Data, $-1
+        // IP=0. Data=2. Offset=2.
+        // Target=-1. Offset=-1.
+        header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 2, MODES.RELATIVE, -1));
+
+        // 1: MOV $Data, $30
+        // IP=1. Data=2. Offset=1.
+        // Target=30. Offset=29.
+        // Note: Target 30 is relative to IP 1. So we want to write to Start+30.
+        // Start is IP-1. So Target is IP-1+30 = IP+29.
+        header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 1, MODES.RELATIVE, 29));
+
+        // 2: Data (DIE)
+        header.push(dieInstr);
     }
 
     if (name === "Teleporter") {
