@@ -19,6 +19,7 @@ const OPCODES = {
     SEQ: 8,
     SNE: 9,
     RAND: 10,
+    ADDF: 14,
     DIE: 15
 };
 
@@ -332,6 +333,55 @@ class VM {
                         }
                         break;
                     }
+                    case OPCODES.ADDF: {
+                        // Packed Add: Adds valA and valB fields independently (12-bit wrapping)
+                        // Useful for manipulating instructions without carry overflow between fields.
+
+                        const valA = this.getVal(p, instr.modeA, instr.valA);
+
+                        let targetVal = 0;
+                        let targetAddr = -1;
+                        let isReg = false;
+
+                        if (instr.modeB === MODES.REGISTER) {
+                            targetVal = p.registers[Math.abs(instr.valB) % 4];
+                            isReg = true;
+                        } else {
+                             targetAddr = this.getAddr(p, instr.modeB, instr.valB);
+                             if (targetAddr >= 0) {
+                                 targetVal = this.memory[targetAddr];
+                             } else {
+                                 break; // Invalid address
+                             }
+                        }
+
+                        // Treat both operands as packed instructions/data
+                        // Extract fields
+                        const srcValA = (valA >>> 14) & 0xFFF;
+                        const srcValB = valA & 0xFFF;
+
+                        const dstValA = (targetVal >>> 14) & 0xFFF;
+                        const dstValB = targetVal & 0xFFF;
+
+                        // Add and wrap 12 bits
+                        const newValA = (dstValA + srcValA) & 0xFFF;
+                        const newValB = (dstValB + srcValB) & 0xFFF;
+
+                        // Reconstruct target value, preserving Opcode and Modes
+                        // Mask out old ValA (bits 14-25) and ValB (bits 0-11)
+                        // Mask: ~(0x03FFCFFF) -> 0xFC003000
+                        let newDst = targetVal & 0xFC003000;
+                        newDst |= (newValA << 14);
+                        newDst |= newValB;
+
+                        // Write back
+                        if (isReg) {
+                            p.registers[Math.abs(instr.valB) % 4] = newDst;
+                        } else {
+                            this.writeMem(targetAddr, newDst, p);
+                        }
+                        break;
+                    }
                     case OPCODES.DIE:
                         p.alive = false;
                         break;
@@ -437,8 +487,8 @@ function getSpeciesProgram(name) {
         program.push(0);
         // 6: ADD #1, %0
         program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
-        // 7: ADD $Const, %3. Const at 15. 15-7=8.
-        program.push(Instruction.encode(OPCODES.ADD, MODES.RELATIVE, 8, MODES.REGISTER, 3));
+        // 7: ADDF $Const, %3. Const at 15. 15-7=8.
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.RELATIVE, 8, MODES.REGISTER, 3));
         // 8: ADD #1, %2
         program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 2));
         // 9: SEQ %2, %1
@@ -515,8 +565,8 @@ function getSpeciesProgram(name) {
         program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, 1));
         // 9: Worker (Placeholder)
         program.push(Instruction.encode(OPCODES.NOP, 0, 0, 0, 0));
-        // 10: ADD %3, %2 (Inc Template)
-        program.push(Instruction.encode(OPCODES.ADD, MODES.REGISTER, 3, MODES.REGISTER, 2));
+        // 10: ADDF %3, %2 (Inc Template)
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.REGISTER, 3, MODES.REGISTER, 2));
         // 11: ADD #1, %0 (Inc Counter)
         program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
         // 12: JMP Back (Target 6. 6-12=-6)
@@ -711,10 +761,10 @@ function getSpeciesProgram(name) {
         program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, 1));
         // 7: Worker (Placeholder)
         program.push(Instruction.encode(OPCODES.NOP, 0, 0, 0, 0));
-        // 8: ADD #1, %2 (Inc Dst/ValB)
-        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 2));
-        // 9: ADD %3, %2 (Inc Src/ValA using Register 3)
-        program.push(Instruction.encode(OPCODES.ADD, MODES.REGISTER, 3, MODES.REGISTER, 2));
+        // 8: ADDF #1, %2 (Inc Dst/ValB)
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.IMMEDIATE, 1, MODES.REGISTER, 2));
+        // 9: ADDF %3, %2 (Inc Src/ValA using Register 3)
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.REGISTER, 3, MODES.REGISTER, 2));
         // 10: ADD #1, %0 (Inc Counter)
         program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
         // 11: SEQ %0, %1 (If Counter == Limit, Skip Jump)
@@ -814,8 +864,8 @@ function getSpeciesProgram(name) {
     // 3: Worker (Placeholder)
     program.push(Instruction.encode(OPCODES.NOP, 0, 0, 0, 0));
 
-    // 4: ADD %3, %2 (Inc Template Reg using Constant in %3)
-    program.push(Instruction.encode(OPCODES.ADD, MODES.REGISTER, 3, MODES.REGISTER, 2));
+    // 4: ADDF %3, %2 (Inc Template Reg using Constant in %3)
+    program.push(Instruction.encode(OPCODES.ADDF, MODES.REGISTER, 3, MODES.REGISTER, 2));
 
     // 5: ADD #1, %0 (Inc Counter)
     program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
@@ -856,7 +906,7 @@ function placeSpecies(speciesName, startAddr) {
     for(let i=0; i<program.length; i++) {
         const addr = (startAddr + i) % MEMORY_SIZE;
         vm.memory[addr] = program[i];
-        vm.memoryMap[addr] = 'white';
+        vm.memoryMap[addr] = `hsl(${Math.floor(hue)}, 100%, 50%)`;
     }
 
     vm.addProcess(startAddr, null, hue);
@@ -1155,8 +1205,10 @@ if (typeof document !== 'undefined') {
     document.getElementById('memoryCanvas').addEventListener('click', (e) => {
         const canvas = e.target;
         const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
 
         const cols = 64;
         const rows = 64;
