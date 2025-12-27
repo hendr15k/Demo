@@ -433,8 +433,9 @@ function getSpeciesProgram(name) {
         const iterations = 5;
         const totalHeaderSize = iterations * headerLoopSize + 1; // +1 for Data
 
-        // Data index relative to start of header
-        const dataIndex = iterations * headerLoopSize;
+        // Data index relative to start of header (after Loop + JMP)
+        // Loop size: 10. JMP: 1. Data at 11.
+        const dataIndex = iterations * headerLoopSize + 1;
 
         for(let k=0; k<iterations; k++) {
             // Index of this instruction in the header sequence
@@ -449,6 +450,10 @@ function getSpeciesProgram(name) {
             header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, dataIndex - (currentIdx + 1), MODES.REG_INDIRECT, 0));
         }
 
+        // Push JMP over Data (Skip DIE)
+        // Target is +2 (Skip 1 instruction)
+        header.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 2, 0, 0));
+
         // Push Data (DIE instruction)
         header.push(dieInstr);
     }
@@ -461,23 +466,27 @@ function getSpeciesProgram(name) {
         // Structure:
         // 0: MOV $Data, $-1 (Write Behind)
         // 1: MOV $Data, $30 (Write Ahead)
-        // 2: Data (DIE)
+        // 2: JMP 2 (Skip Data)
+        // 3: Data (DIE)
 
-        const dataIndex = 2;
+        const dataIndex = 3;
 
         // 0: MOV $Data, $-1
-        // IP=0. Data=2. Offset=2.
+        // IP=0. Data=3. Offset=3.
         // Target=-1. Offset=-1.
-        header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 2, MODES.RELATIVE, -1));
+        header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 3, MODES.RELATIVE, -1));
 
         // 1: MOV $Data, $30
-        // IP=1. Data=2. Offset=1.
+        // IP=1. Data=3. Offset=2.
         // Target=30. Offset=29.
         // Note: Target 30 is relative to IP 1. So we want to write to Start+30.
         // Start is IP-1. So Target is IP-1+30 = IP+29.
-        header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 1, MODES.RELATIVE, 29));
+        header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 2, MODES.RELATIVE, 29));
 
-        // 2: Data (DIE)
+        // 2: JMP 2
+        header.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 2, 0, 0));
+
+        // 3: Data (DIE)
         header.push(dieInstr);
     }
 
