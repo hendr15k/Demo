@@ -62,19 +62,37 @@ class Instruction {
 
         return new Instruction(op, modeA, valA, modeB, valB);
     }
+
+    static disassemble(instr) {
+        const opNames = Object.keys(OPCODES).find(key => OPCODES[key] === instr.opcode) || "UNK";
+
+        function fmt(mode, val) {
+            switch (mode) {
+                case MODES.IMMEDIATE: return `#${val}`;
+                case MODES.RELATIVE: return `$${val}`;
+                case MODES.REGISTER: return `%${val}`;
+                case MODES.REG_INDIRECT: return `@%${val}`;
+                default: return `?${val}`;
+            }
+        }
+
+        return `${opNames} ${fmt(instr.modeA, instr.valA)}, ${fmt(instr.modeB, instr.valB)}`;
+    }
 }
 
 // --- VM Classes ---
 
 class Process {
-    constructor(ip, parent = null) {
+    constructor(ip, parent = null, hue = null) {
         this.ip = ip;
         this.registers = new Int32Array(4).fill(0);
         this.alive = true;
         this.age = 0;
         this.gen = parent ? parent.gen + 1 : 0;
 
-        if (parent) {
+        if (hue !== null) {
+            this.hue = hue;
+        } else if (parent) {
              this.hue = parent.hue + (Math.random() * 20 - 10); // +/- 10 deg variation
              if (this.hue < 0) this.hue += 360;
              if (this.hue > 360) this.hue -= 360;
@@ -145,9 +163,9 @@ class VM {
         this.populationHistory = state.populationHistory || [];
     }
 
-    addProcess(ip) {
+    addProcess(ip, parent = null, hue = null) {
         if (this.processes.length < MAX_PROCESSES) {
-            const p = new Process(ip % MEMORY_SIZE);
+            const p = new Process(ip % MEMORY_SIZE, parent, hue);
             this.processes.push(p);
             return p;
         }
@@ -334,6 +352,16 @@ class VM {
 
 // --- Species Generation ---
 
+const SPECIES_COLORS = {
+    "Basic": 200, // Blue
+    "SmartLoop": 120, // Green
+    "Hyper": 60, // Yellow
+    "Killer": 0, // Red
+    "Fortress": 300, // Magenta
+    "Teleporter": 270, // Purple
+    "Glider": 180 // Cyan
+};
+
 function getSpeciesProgram(name) {
     const offset = 128; // Standard distance for children
     const program = [];
@@ -427,6 +455,79 @@ function getSpeciesProgram(name) {
         program.push(template);
         // 15: Constant
         program.push(constant);
+
+        return program;
+    }
+
+    if (name === "Glider") {
+        // Glider: Moves itself by replicating to offset, spawning child, then killing parent.
+        // It uses the same compact loop as SmartLoop, but adds a suicide pill.
+        // Since SmartLoop is complex to modify inline, we build a custom Glider.
+        // Structure:
+        // [Template] (0)
+        // [Constant] (1)
+        // [Boot] (2..5)
+        // [Loop] (6..12)
+        // [Spawn] (13)
+        // [Suicide] (14)
+
+        const totalSize = 15;
+        // Offsets:
+        // Template: 0
+        // Constant: 1
+        // Boot: 2..5
+        // Loop: 6..12
+        // Spawn: 13
+        // DIE: 14
+
+        // Worker is at Loop+3 = 9.
+        const workerIndex = 9;
+        const srcRel = -workerIndex;
+        const dstRel = offset - workerIndex;
+
+        const templateInstr = Instruction.encode(OPCODES.MOV, MODES.RELATIVE, srcRel, MODES.RELATIVE, dstRel);
+        const constantVal = 16385; // 1<<14 | 1
+
+        // 0: Template
+        program.push(templateInstr);
+        // 1: Constant
+        program.push(constantVal);
+
+        // Boot
+        // 2: MOV #0, %0 (i)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 0, MODES.REGISTER, 0));
+        // 3: MOV #Size, %1 (Limit)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, totalSize, MODES.REGISTER, 1));
+        // 4: MOV $Template, %2 (Load Template from 0. IP=4. 0-4=-4)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -4, MODES.REGISTER, 2));
+        // 5: MOV $Constant, %3 (Load Constant from 1. IP=5. 1-5=-4)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -4, MODES.REGISTER, 3));
+
+        // Loop
+        // 6: SNE %0, %1 (Check done)
+        program.push(Instruction.encode(OPCODES.SNE, MODES.REGISTER, 0, MODES.REGISTER, 1));
+        // 7: JMP Spawn (Skip Loop Body. Target 13. 13-7=6)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 6, 0, 0));
+
+        // 8: MOV %2, $1 (Reset Worker at +1)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, 1));
+        // 9: Worker (Placeholder)
+        program.push(Instruction.encode(OPCODES.NOP, 0, 0, 0, 0));
+        // 10: ADD %3, %2 (Inc Template)
+        program.push(Instruction.encode(OPCODES.ADD, MODES.REGISTER, 3, MODES.REGISTER, 2));
+        // 11: ADD #1, %0 (Inc Counter)
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
+        // 12: JMP Back (Target 6. 6-12=-6)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -6, 0, 0));
+
+        // 13: SPWN
+        // Target = Start + Offset.
+        // Current IP = Start + 13.
+        // Rel = (Start + Offset) - (Start + 13) = Offset - 13.
+        program.push(Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, offset - 13, 0, 0));
+
+        // 14: DIE
+        program.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0));
 
         return program;
     }
@@ -736,6 +837,7 @@ let speed = 50;
 
 function placeSpecies(speciesName, startAddr) {
     const program = getSpeciesProgram(speciesName);
+    const hue = SPECIES_COLORS[speciesName] !== undefined ? SPECIES_COLORS[speciesName] : Math.random() * 360;
 
     // Clear area (safety margin)
     for(let i=0; i<program.length + 20; i++) {
@@ -751,7 +853,7 @@ function placeSpecies(speciesName, startAddr) {
         vm.memoryMap[addr] = 'white';
     }
 
-    vm.addProcess(startAddr);
+    vm.addProcess(startAddr, null, hue);
 }
 
 function spawnSpecies(speciesName) {
@@ -957,6 +1059,26 @@ if (typeof document !== 'undefined') {
         initTournament();
     });
 
+    document.getElementById('meteorBtn').addEventListener('click', () => {
+        if (!vm) return;
+        // Kill 50% of processes
+        vm.processes.forEach(p => {
+            if (Math.random() < 0.5) {
+                p.alive = false;
+            }
+        });
+        // Optional: Add visual noise or craters?
+        // Let's clear some memory randomly too
+        for(let i=0; i<100; i++) {
+            const addr = Math.floor(Math.random() * MEMORY_SIZE);
+            vm.memory[addr] = 0;
+            vm.memoryMap[addr] = null;
+        }
+        draw();
+        updateStats();
+        drawPopulationGraph();
+    });
+
     document.getElementById('spawnBtn').addEventListener('click', () => {
         const species = document.getElementById('speciesSelect').value;
         spawnSpecies(species);
@@ -1043,7 +1165,7 @@ if (typeof document !== 'undefined') {
             const word = vm.memory[idx];
             const instr = Instruction.decode(word);
 
-            const opNames = Object.keys(OPCODES).find(key => OPCODES[key] === instr.opcode) || "UNKNOWN";
+            const asm = Instruction.disassemble(instr);
 
             // Find process at this IP
             const process = vm.processes.find(p => p.ip === idx);
@@ -1055,10 +1177,8 @@ if (typeof document !== 'undefined') {
             const info = document.getElementById('info');
             info.innerHTML = `
                 <p>Addr: ${idx}</p>
-                <p>Op: ${opNames} (${instr.opcode})</p>
-                <p>ModeA: ${instr.modeA}, ValA: ${instr.valA} (${instr.valA >= 2048 ? instr.valA - 4096 : instr.valA})</p>
-                <p>ModeB: ${instr.modeB}, ValB: ${instr.valB} (${instr.valB >= 2048 ? instr.valB - 4096 : instr.valB})</p>
-                <p>Raw: ${word.toString(16)}</p>
+                <p><strong>${asm}</strong></p>
+                <p>Raw: 0x${word.toString(16).toUpperCase().padStart(8, '0')}</p>
                 <p>Owner Color: <span style="display:inline-block;width:10px;height:10px;background-color:${vm.memoryMap[idx] || 'black'}"></span></p>
                 ${processInfo}
             `;
