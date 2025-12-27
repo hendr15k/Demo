@@ -70,8 +70,8 @@ class Instruction {
             switch (mode) {
                 case MODES.IMMEDIATE: return `#${val}`;
                 case MODES.RELATIVE: return `$${val}`;
-                case MODES.REGISTER: return `%${val}`;
-                case MODES.REG_INDIRECT: return `@%${val}`;
+                case MODES.REGISTER: return `%${Math.abs(val) % 4}`;
+                case MODES.REG_INDIRECT: return `@%${Math.abs(val) % 4}`;
                 default: return `?${val}`;
             }
         }
@@ -215,7 +215,9 @@ class VM {
 
         if (this.processes.length === 0) return;
 
-        for (let i = 0; i < this.processes.length; i++) {
+        // Iterate only over processes that existed at start of step
+        const count = this.processes.length;
+        for (let i = 0; i < count; i++) {
             const p = this.processes[i];
 
             const instrWord = this.memory[p.ip];
