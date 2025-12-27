@@ -105,7 +105,7 @@ class Process {
 }
 
 class VM {
-    constructor() {
+    constructor(mutationRate = 0.001) {
         this.memory = new Int32Array(MEMORY_SIZE).fill(0);
         this.memoryMap = new Array(MEMORY_SIZE).fill(null);
         this.processes = [];
@@ -113,6 +113,7 @@ class VM {
         this.totalMutations = 0;
         this.populationHistory = [];
         this.maxAge = 0; // 0 = Infinite
+        this.mutationRate = mutationRate;
     }
 
     reset() {
@@ -140,7 +141,8 @@ class VM {
             cycles: this.cycles,
             totalMutations: this.totalMutations,
             maxAge: this.maxAge,
-            populationHistory: this.populationHistory
+            populationHistory: this.populationHistory,
+            mutationRate: this.mutationRate
         });
     }
 
@@ -162,6 +164,7 @@ class VM {
         this.totalMutations = state.totalMutations || 0;
         this.maxAge = state.maxAge || 0;
         this.populationHistory = state.populationHistory || [];
+        this.mutationRate = state.mutationRate !== undefined ? state.mutationRate : 0.001;
     }
 
     addProcess(ip, parent = null, hue = null) {
@@ -201,7 +204,7 @@ class VM {
         const target = this.wrap(addr);
 
         let finalValue = value;
-        if (Math.random() < mutationRate) {
+        if (Math.random() < this.mutationRate) {
              const bit = Math.floor(Math.random() * 32);
              finalValue ^= (1 << bit);
              this.totalMutations++;
@@ -978,7 +981,7 @@ function spawnSpecies(speciesName) {
 }
 
 function init(speciesName = "Basic") {
-    vm = new VM();
+    vm = new VM(mutationRate);
     // Start in the middle
     const startAddr = Math.floor(MEMORY_SIZE / 2);
     placeSpecies(speciesName, startAddr);
@@ -989,7 +992,7 @@ function init(speciesName = "Basic") {
 }
 
 function initRandomSoup() {
-    vm = new VM();
+    vm = new VM(mutationRate);
 
     // Fill memory with random instructions
     for(let i=0; i<MEMORY_SIZE; i++) {
@@ -1009,7 +1012,7 @@ function initRandomSoup() {
 }
 
 function initTournament() {
-    vm = new VM();
+    vm = new VM(mutationRate);
 
     // Corners
     const step = MEMORY_SIZE / 4;
@@ -1203,6 +1206,7 @@ if (typeof document !== 'undefined') {
         // Range 0-100 maps to 0.0 - 0.1 (0% to 10%)
         const val = parseInt(e.target.value);
         mutationRate = val / 1000;
+        if (vm) vm.mutationRate = mutationRate;
         document.getElementById('mutationValue').innerText = (mutationRate * 100).toFixed(1) + "%";
     });
 
@@ -1244,6 +1248,10 @@ if (typeof document !== 'undefined') {
                 // Update UI to reflect loaded state
                 document.getElementById('maxAgeRange').value = vm.maxAge;
                 document.getElementById('maxAgeValue').innerText = vm.maxAge === 0 ? "∞" : vm.maxAge;
+
+                mutationRate = vm.mutationRate;
+                document.getElementById('mutationRange').value = vm.mutationRate * 1000;
+                document.getElementById('mutationValue').innerText = (vm.mutationRate * 100).toFixed(1) + "%";
 
                 draw();
                 updateStats();
