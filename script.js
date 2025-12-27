@@ -558,8 +558,8 @@ function getSpeciesProgram(name) {
         program.push(Instruction.encode(OPCODES.SUB, MODES.REGISTER, 1, MODES.REGISTER, 0));
         // 12: SPWN @%0
         program.push(Instruction.encode(OPCODES.SPWN, MODES.REG_INDIRECT, 0, 0, 0));
-        // 13: DIE
-        program.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0));
+        // 13: JMP Loop (Back to 0) - Infinite Teleport
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -13, 0, 0));
 
         // 14: Template
         program.push(template);
@@ -843,46 +843,57 @@ function getSpeciesProgram(name) {
     }
 
     // Default: SmartLoop (used for SmartLoop and Killer base)
+    // Revised: Multi-Spawn SmartLoop (Queen Logic)
     // Structure:
     // [Header]
     // [Template Data] (Never executed, Index 0)
-    // [Constant Data] (16385, Index 1)
-    // [Boot] (Init registers, Index 2, 3, 4, 5)
-    // [Loop] (Copy -> Increment -> Check -> Loop)
-    // [Spawn]
+    // [Constant1 Data] (16385, Index 1) - For Copy Increment
+    // [Constant2 Data] (128, Index 2) - For Offset Jump (Template Dst)
+    // [Constant3 Data] (128<<14, Index 3) - For Offset Jump (Spawn ValA)
+    // [Boot] (Init registers, Index 4, 5, 6, 7)
+    // [Loop] (Copy -> Increment -> Check -> Loop) (Index 8..14)
+    // [Spawn] (Index 15)
+    // [Update] (Index 16..17) -> JMP Boot (Index 18)
 
     // Offsets
     const headerSize = header.length;
     const templateSize = 1;
-    const constantSize = 1; // New
-    const bootSize = 4; // Was 3. Now 4 instructions (Init i, Limit, Template, Constant)
+    const constant1Size = 1;
+    const constant2Size = 1;
+    const constant3Size = 1; // New
+    const bootSize = 4;
     const loopBodySize = 7;
-    const spawnSize = 2; // SPWN, DIE
+    const spawnSize = 1; // SPWN only
+    const updateSize = 3; // ADDF, ADDF, JMP
 
-    const totalSize = headerSize + templateSize + constantSize + bootSize + loopBodySize + spawnSize;
+    const totalSize = headerSize + templateSize + constant1Size + constant2Size + constant3Size + bootSize + loopBodySize + spawnSize + updateSize;
 
     // indices relative to start of SmartLoop part
     // Template: 0
-    // Constant: 1
-    // Boot: 2..5
-    // Loop: 6..12
+    // Constant1: 1
+    // Constant2: 2
+    // Constant3: 3
+    // Boot: 4..7
+    // Loop: 8..14
 
     // Worker Index Calculation:
-    // Loop starts at 6.
+    // Loop starts at 8.
     // Loop body: SNE, JMP, MOV(Reset), WORKER, ADD, ADD, JMP.
     // Worker is at index 3 of Loop Body.
-    // So Global Worker Index = 6 + 3 = 9.
+    // So Global Worker Index = 8 + 3 = 11.
 
     // Template Instruction: MOV $(Src), $(Dst)
     // SrcRel = 0 - WorkerIndex = -WorkerIndex.
     // DstRel = Offset - WorkerIndex.
 
-    const workerIndex = headerSize + 9;
+    const workerIndex = headerSize + 11;
     const srcRel = -workerIndex;
     const dstRel = offset - workerIndex;
 
     const templateInstr = Instruction.encode(OPCODES.MOV, MODES.RELATIVE, srcRel, MODES.RELATIVE, dstRel);
-    const constantVal = 16385; // 1<<14 | 1
+    const constant1Val = 16385; // 1<<14 | 1
+    const constant2Val = 128; // Add 128 to Dst field (for Template)
+    const constant3Val = 128 << 14; // Add 128 to Src field (for SPWN valA)
 
     // Add Header
     program.push(...header);
@@ -890,8 +901,14 @@ function getSpeciesProgram(name) {
     // Add Template (Data)
     program.push(templateInstr);
 
-    // Add Constant (Data)
-    program.push(constantVal);
+    // Add Constant1 (Data)
+    program.push(constant1Val);
+
+    // Add Constant2 (Data)
+    program.push(constant2Val);
+
+    // Add Constant3 (Data)
+    program.push(constant3Val);
 
     // Boot
     // 0: MOV #0, %0 (i)
@@ -899,16 +916,16 @@ function getSpeciesProgram(name) {
     // 1: MOV #Size, %1 (Limit)
     program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, totalSize, MODES.REGISTER, 1));
     // 2: MOV $Template, %2 (Load Template from Index 0)
-    // Boot starts at Index 2 relative to SmartLoop.
-    // Current IP (for this instr) is Index 4 (2+2).
+    // Boot starts at Index 4 relative to SmartLoop.
+    // Current IP (for this instr) is Index 6 (4+2).
     // Template is at Index 0.
-    // Rel Offset = 0 - 4 = -4.
-    program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -4, MODES.REGISTER, 2));
-    // 3: MOV $Constant, %3 (Load Constant from Index 1)
-    // Current IP is Index 5.
-    // Constant is at Index 1.
-    // Rel Offset = 1 - 5 = -4.
-    program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -4, MODES.REGISTER, 3));
+    // Rel Offset = 0 - 6 = -6.
+    program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -6, MODES.REGISTER, 2));
+    // 3: MOV $Constant1, %3 (Load Constant1 from Index 1)
+    // Current IP is Index 7.
+    // Constant1 is at Index 1.
+    // Rel Offset = 1 - 7 = -6.
+    program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -6, MODES.REGISTER, 3));
 
     // Loop
     // 0: SNE %0, %1 (Check done: if i != limit, skip jump to spawn)
@@ -922,7 +939,7 @@ function getSpeciesProgram(name) {
     // 3: Worker (Placeholder)
     program.push(Instruction.encode(OPCODES.NOP, 0, 0, 0, 0));
 
-    // 4: ADDF %3, %2 (Inc Template Reg using Constant in %3)
+    // 4: ADDF %3, %2 (Inc Template Reg using Constant1 in %3)
     program.push(Instruction.encode(OPCODES.ADDF, MODES.REGISTER, 3, MODES.REGISTER, 2));
 
     // 5: ADD #1, %0 (Inc Counter)
@@ -931,13 +948,26 @@ function getSpeciesProgram(name) {
     // 6: JMP -6 (Back to SNE)
     program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -6, 0, 0));
 
-    // Spawn
+    // Spawn (Index 15)
     // SPWN (Offset). Relative to *this* instruction.
     // We want to spawn at `Start + Offset`.
-    // This instruction index = TotalSize - 2.
-    // Relative = `(Start + Offset) - (Start + TotalSize - 2)` = `Offset - TotalSize + 2`.
-    program.push(Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, offset - totalSize + 2, 0, 0));
-    program.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0));
+    // Rel = `(Start + Offset) - (Start + 15)` = `Offset - 15`.
+    program.push(Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, offset - 15, 0, 0));
+
+    // Update (Index 16..18)
+    // 16: ADDF $Constant2, $Template (Add 128 to Template Dst - ValB)
+    // Constant2 is at 2. IP=16. Rel = 2-16 = -14.
+    // Template is at 0. IP=16. Rel = 0-16 = -16.
+    program.push(Instruction.encode(OPCODES.ADDF, MODES.RELATIVE, -14, MODES.RELATIVE, -16));
+
+    // 17: ADDF $Constant3, $Spawn (Add 128 to Spawn Src - ValA)
+    // Constant3 is at 3. IP=17. Rel = 3-17 = -14.
+    // Spawn is at 15. IP=17. Rel = 15-17 = -2.
+    program.push(Instruction.encode(OPCODES.ADDF, MODES.RELATIVE, -14, MODES.RELATIVE, -2));
+
+    // 18: JMP Boot (Index 4).
+    // IP=18. Target=4. Rel = 4-18 = -14.
+    program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -14, 0, 0));
 
     return program;
 }
