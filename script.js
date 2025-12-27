@@ -533,135 +533,139 @@ function getSpeciesProgram(name) {
     }
 
     if (name === "Hyper") {
-        // Hyper Replicator v4: Robust Split-Loop with Workers at End.
+        // Hyper Replicator v5: Fixed Split-Loop with Workers at End.
         // Fixes "Packed ADD Carry" bug by ensuring negative offsets never wrap to 0.
+        // Uses single-step copying to avoid skipping odd words, and manually copies JMPs in Setup.
         // Layout:
-        // 0..3: Boot
-        // 4..12: Loop1 (Copies 0..29, Jumps to WorkersA)
-        // 13..16: Setup2
-        // 17..25: Loop2 (Copies 36..End, Jumps to WorkersB)
-        // 26..29: Data
-        // 30..32: Worker Block A (W1a, W2a, JMP Back1)
-        // 33..35: Worker Block B (W1b, W2b, JMP Back2)
-        // 36..37: Spawn
+        // 0..3: Boot (4)
+        // 4..10: Loop1 (7)
+        // 11..15: Setup2 (5)
+        // 16..22: Loop2 (7)
+        // 23..26: Data (4)
+        // 27..28: Worker A (2)
+        // 29..30: Worker B (2)
+        // 31..32: Spawn (2)
+        // Total: 33 words
 
-        const limit1 = 30; // Stop before Workers
-        const start2 = 36; // Resume after Workers (Spawn)
-        const totalSize = 38;
+        const totalSize = 33;
+        const limit1 = 27; // Copy 0..26 (Pre-WA)
+        const start2 = 31; // Copy 31..32 (Spawn)
 
+        // Indices
         const loop1Index = 4;
-        const loop2Index = 17;
-        const dataIndex = 26;
-        const waIndex = 30;
-        const wbIndex = 33;
-        const spawnIndex = 36;
+        const setup2Index = 11;
+        const loop2Index = 16;
+        const dataIndex = 23;
+        const waIndex = 27;
+        const wbIndex = 29;
+        const spawnIndex = 31;
 
-        const tmpl1Index = 26;
-        const tmpl2Index = 27;
-        const constIndex = 28;
-        const lim1Index = 29;
+        const tmpl1Index = 23;
+        const tmpl2Index = 24;
+        const constIndex = 25;
+        const lim1Index = 26;
 
-        // Loop 1 Tmpl: Src -30, Dst Offset-30.
-        const srcRel1 = -30;
-        const dstRel1 = offset - 30;
+        // Loop 1 Tmpl: Src -27, Dst Offset-27.
+        // Copies index 0 relative to WA(27).
+        const srcRel1 = -27;
+        const dstRel1 = offset - 27;
         const tmpl1 = Instruction.encode(OPCODES.MOV, MODES.RELATIVE, srcRel1, MODES.RELATIVE, dstRel1);
 
-        // Loop 2 Tmpl: Src 36-33 = 3. Dst Offset+36-33 = Offset+3.
-        const srcRel2 = 3;
-        const dstRel2 = offset + 3;
+        // Loop 2 Tmpl: Src 31-29 = 2. Dst Offset+2.
+        // Copies index 31 relative to WB(29).
+        const srcRel2 = 31 - 29;
+        const dstRel2 = offset + (31 - 29);
         const tmpl2 = Instruction.encode(OPCODES.MOV, MODES.RELATIVE, srcRel2, MODES.RELATIVE, dstRel2);
 
-        const constVal = (2 << 14) | 2; // Add 2, 2
+        const constVal = (1 << 14) | 1; // Add 1, 1
 
         // 0..3 Boot
+        // 0: MOV #0, %0
         program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 0, MODES.REGISTER, 0));
+        // 1: MOV #Limit1, %1. Target 26. 26-1 = 25.
         program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, lim1Index - 1, MODES.REGISTER, 1));
+        // 2: MOV Tmpl1, %2. Target 23. 23-2 = 21.
         program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, tmpl1Index - 2, MODES.REGISTER, 2));
+        // 3: MOV Const, %3. Target 25. 25-3 = 22.
         program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, constIndex - 3, MODES.REGISTER, 3));
 
-        // 4..12 Loop1
-        // 4: SNE
+        // 4..10 Loop1
+        // 4: SNE %0, %1 (Check Limit)
         program.push(Instruction.encode(OPCODES.SNE, MODES.REGISTER, 0, MODES.REGISTER, 1));
-        // 5: JMP Setup2 (Target 12. 12-5=7)
-        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 7, 0, 0));
-        // 6: MOV %2, Rel(WA). WA at 30. 30-6=24.
+        // 5: JMP Setup2 (Target 11. 11-5 = 6)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, setup2Index - 5, 0, 0));
+        // 6: MOV %2, WA (Reset Worker. WA at 27. 27-6=21)
         program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, waIndex - 6));
-        // 7: MOV %2, Rel(WA+1). 31-7=24.
-        program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, waIndex + 1 - 7));
-        // 8: JMP WA. 30-8=22.
-        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, waIndex - 8, 0, 0));
-        // 9: ADD (Back1 Target)
+        // 7: JMP WA (Target 27. 27-7=20)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, waIndex - 7, 0, 0));
+        // 8: ADD %3, %2 (Back1 Target). Inc Tmpl.
         program.push(Instruction.encode(OPCODES.ADD, MODES.REGISTER, 3, MODES.REGISTER, 2));
-        // 10: ADD
-        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 2, MODES.REGISTER, 0));
-        // 11: JMP Loop1 (Target 4. 4-11=-7)
-        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -7, 0, 0));
-        // 12: Pad/NOP? No, 4..11 is 8 words. 12 is needed? No.
-        // Wait, Boot 0..3. Loop1 starts at 4.
-        // 4,5,6,7,8,9,10,11. 8 instructions.
-        // Setup2 starts at 12?
-        // Adjust indices.
-        // Let's stick to push order.
+        // 9: ADD #1, %0. Inc Counter.
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
+        // 10: JMP Loop1 (Target 4. 4-10=-6)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -6, 0, 0));
 
-        // 12..15 Setup2 (Shifted from 13)
-        // 12: MOV Tmpl2. Target 27. 27-12=15.
-        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, tmpl2Index - 12, MODES.REGISTER, 2));
-        // 13: MOV Ctr=Start2 (36)
+        // 11..15 Setup2
+        // 11: MOV Tmpl2, %2. Target 24. 24-11=13.
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, tmpl2Index - 11, MODES.REGISTER, 2));
+        // 12: MOV #Start2, %0. (31)
         program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, start2, MODES.REGISTER, 0));
-        // 14: MOV Limit=Total (38)
+        // 13: MOV #Total, %1. (33)
         program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, totalSize, MODES.REGISTER, 1));
+        // 14: MOV Rel(WA_JMP), Rel(Child+WA_JMP).
+        // WA_JMP is at 28. Offset relative to 14 is 14.
+        // Child+28 relative to Child+14 is 14. Rel(Offset+14).
+        // Using REL mode for Dest means relative to IP (Child IP + 14).
+        // But we want to WRITE to Child memory.
+        // If we use MOV REL, REL.
+        // Dest is RELATIVE to IP.
+        // IP is 14. Target is 14 + (Offset + 14) = 28 + Offset.
+        // This is Child+28. Correct.
+        // Src is RELATIVE to IP.
+        // IP is 14. Target is 14 + 14 = 28.
+        // This is Self+28. Correct.
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 14, MODES.RELATIVE, offset + 14));
+        // 15: MOV Rel(WB_JMP), Rel(Child+WB_JMP).
+        // WB_JMP is at 30. Relative to 15 is 15.
+        // Dest: Offset + 15.
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 15, MODES.RELATIVE, offset + 15));
 
-        // 15..22 Loop2 (Starts 15)
-        // 15: SNE
+        // 16..22 Loop2
+        // 16: SNE %0, %1
         program.push(Instruction.encode(OPCODES.SNE, MODES.REGISTER, 0, MODES.REGISTER, 1));
-        // 16: JMP Spawn (Target 36. 36-16=20)
-        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, spawnIndex - 16, 0, 0));
-        // 17: MOV %2, Rel(WB). WB at 33. 33-17=16.
-        program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, wbIndex - 17));
-        // 18: MOV %2, Rel(WB+1). 34-18=16.
-        program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, wbIndex + 1 - 18));
-        // 19: JMP WB. 33-19=14.
+        // 17: JMP Spawn (Target 31. 31-17=14)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, spawnIndex - 17, 0, 0));
+        // 18: MOV %2, WB (WB at 29. 29-18=11)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, wbIndex - 18));
+        // 19: JMP WB (Target 29. 29-19=10)
         program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, wbIndex - 19, 0, 0));
-        // 20: ADD (Back2 Target)
+        // 20: ADD %3, %2 (Back2 Target). Inc Tmpl.
         program.push(Instruction.encode(OPCODES.ADD, MODES.REGISTER, 3, MODES.REGISTER, 2));
-        // 21: ADD
-        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 2, MODES.REGISTER, 0));
-        // 22: JMP Loop2 (Target 15. 15-22=-7)
-        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -7, 0, 0));
+        // 21: ADD #1, %0. Inc Counter.
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
+        // 22: JMP Loop2 (Target 16. 16-22=-6)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -6, 0, 0));
 
-        // 23..25 Gap? No.
-        // 23,24,25. 3 words used.
-        // We are at 23.
-        // Data is at 26.
-        // Fill 23,24,25 with NOP.
-        program.push(0);
-        program.push(0);
-        program.push(0);
-
-        // 26..29 Data
+        // 23..26 Data
         program.push(tmpl1);
         program.push(tmpl2);
         program.push(constVal);
         program.push(limit1);
 
-        // 30..32 WorkerA
-        // 30: W1
+        // 27..28 WorkerA
+        // 27: NOP
         program.push(0);
-        // 31: W2
-        program.push(0);
-        // 32: JMP Back1 (Target 9. 9-32=-23)
-        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 9 - 32, 0, 0));
+        // 28: JMP Back1 (Target 8. 8-28=-20)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 8 - 28, 0, 0));
 
-        // 33..35 WorkerB
-        // 33: W1
+        // 29..30 WorkerB
+        // 29: NOP
         program.push(0);
-        // 34: W2
-        program.push(0);
-        // 35: JMP Back2 (Target 20. 20-35=-15)
-        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 20 - 35, 0, 0));
+        // 30: JMP Back2 (Target 20. 20-30=-10)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 20 - 30, 0, 0));
 
-        // 36..37 Spawn
-        program.push(Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, offset - 36, 0, 0));
+        // 31..32 Spawn
+        program.push(Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, offset - 31, 0, 0));
         program.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0));
 
         return program;
