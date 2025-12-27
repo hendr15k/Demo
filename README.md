@@ -27,7 +27,9 @@ Die Simulation basiert auf einer "Core War"-ähnlichen Arena (einem gemeinsamen 
     *   *Hyper Replicator*: Hochentwickelt, nutzt "Unrolled Loops" für maximale Geschwindigkeit.
     *   *Killer*: Zerstört aktiv Speicherbereiche vor der Replikation.
     *   *Fortress*: Baut Schutzwälle aus tödlichen Befehlen (`DIE`).
-*   **Spawn-Funktion**: Fügen Sie jederzeit neue Spezies in die laufende Simulation ein, um "Turniere" zu veranstalten oder das Gleichgewicht zu stören.
+    *   *Teleporter*: Vermeidet Überfüllung, indem er an zufällige Speicheradressen springt und sich dort vermehrt.
+*   **Turnier-Modus**: Startet einen Kampf mit vier verschiedenen Spezies in den Ecken des Speichers.
+*   **Spawn-Funktion**: Fügen Sie jederzeit neue Spezies in die laufende Simulation ein, um das Gleichgewicht zu stören.
 *   **Ursuppe**: Starten Sie mit reinem Chaos und sehen Sie zu, ob Leben entsteht.
 *   **Kontrolle**: Passen Sie Geschwindigkeit, Mutationsrate und Lebensdauer in Echtzeit an.
 *   **Speichern/Laden**: Sichern Sie interessante Zustände und teilen Sie sie.
@@ -44,6 +46,7 @@ Die Simulation basiert auf einer "Core War"-ähnlichen Arena (einem gemeinsamen 
 *   **Start/Pause**: Steuert den Simulationslauf.
 *   **Schritt**: Einzelner Zyklus (für Debugging).
 *   **Reset**: Löscht den Speicher und platziert die gewählte Spezies in die Mitte.
+*   **Turnier**: Startet eine neue Simulation mit 4 konkurrierenden Spezies.
 *   **Spawn**: Fügt die gewählte Spezies an einer zufälligen Position hinzu (ohne Reset).
 *   **Ursuppe**: Füllt den Speicher mit Zufallsdaten.
 *   **Geschwindigkeit**: Wie viele VM-Zyklen pro Frame berechnet werden.
