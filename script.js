@@ -19,6 +19,7 @@ const OPCODES = {
     SEQ: 8,
     SNE: 9,
     RAND: 10,
+    SYS: 11,
     ADDF: 14,
     DIE: 15
 };
@@ -336,6 +337,29 @@ class VM {
                         }
                         break;
                     }
+                    case OPCODES.SYS: {
+                        // System Call: Hack the Environment
+                        // valA: Command (1: MutationRate, 2: MaxAge)
+                        // valB: Value
+                        const cmd = this.getVal(p, instr.modeA, instr.valA);
+                        const arg = this.getVal(p, instr.modeB, instr.valB);
+
+                        if (cmd === 1) {
+                            // Set Mutation Rate (arg / 1000)
+                            // Clamp between 0 and 1000 (0% to 100%)
+                            let rate = arg;
+                            if (rate < 0) rate = 0;
+                            if (rate > 1000) rate = 1000;
+                            this.mutationRate = rate / 1000;
+                            mutationRate = this.mutationRate; // Update global
+                        } else if (cmd === 2) {
+                            // Set Max Age
+                            let age = arg;
+                            if (age < 0) age = 0;
+                            this.maxAge = age;
+                        }
+                        break;
+                    }
                     case OPCODES.ADDF: {
                         // Packed Add: Adds valA and valB fields independently (12-bit wrapping)
                         // Useful for manipulating instructions without carry overflow between fields.
@@ -414,7 +438,8 @@ const SPECIES_COLORS = {
     "Killer": 0, // Red
     "Fortress": 300, // Magenta
     "Teleporter": 270, // Purple
-    "Glider": 180 // Cyan
+    "Glider": 180, // Cyan
+    "Nomad": 30 // Orange
 };
 
 function getSpeciesProgram(name) {
@@ -424,6 +449,248 @@ function getSpeciesProgram(name) {
     // Header logic
     let header = [];
     const dieInstr = Instruction.encode(OPCODES.DIE, 0, 0, 0, 0);
+
+    if (name === "Nomad") {
+        // Nomad: Colony builder that breaks out when surrounded.
+        // Logic:
+        // 1. Check if local spawn target (Offset) is empty.
+        // 2. If empty, replicate locally (SmartLoop logic).
+        // 3. If occupied, replicate to random location (Teleporter logic).
+
+        // Structure:
+        // [SmartLoop Header (Check)]
+        // [SmartLoop Body]
+        // [Teleporter Body]
+
+        // --- SmartLoop Part ---
+
+        // Data Section (indices relative to start)
+        // 0: Template (MOV Rel, Rel)
+        // 1: Const1 (16385)
+        // 2: Const2 (128)
+        // 3: Const3 (128<<14)
+        // 4: Const4 (128<<14) - For Check Instruction Update (New)
+
+        // SmartLoop Boot (5..8)
+        // SmartLoop Loop (9..15)
+        // SmartLoop Spawn (16)
+        // SmartLoop Update (17..20) -> JMP Boot (21)
+
+        // Teleporter Entry (22)
+        // Teleporter Body...
+
+        // Wait, merging this into one linear program.
+
+        // 0..4: Data
+        const tmplIdx = 0;
+        const c1Idx = 1;
+        const c2Idx = 2;
+        const c3Idx = 3;
+        const c4Idx = 4;
+
+        // Instructions start at 5.
+        // Header (Check):
+        // 5: MOV $SpawnOffset, %0 (Peek at target)
+        // 6: SNE %0, #0 (Skip if Empty)
+        // 7: JMP Teleport (Jump to Teleporter)
+
+        // SmartLoop Boot (8..11)
+        // ...
+
+        // Let's define the layout carefully.
+
+        const dataSize = 5;
+        const checkSize = 3;
+        const slBootSize = 4;
+        const slLoopSize = 7;
+        const slSpawnSize = 1;
+        const slUpdateSize = 4; // Updated: ADDF(Tmpl), ADDF(Spawn), ADDF(Check), JMP
+
+        // Teleporter starts after SmartLoop
+        const slTotalSize = dataSize + checkSize + slBootSize + slLoopSize + slSpawnSize + slUpdateSize;
+        // slTotalSize = 5 + 3 + 4 + 7 + 1 + 4 = 24.
+
+        // Teleporter Logic (copied and adapted from Teleporter species)
+        // Needs its own Template and Constants if not sharing.
+        // Teleporter uses REG_INDIRECT Template. SmartLoop uses REL_REL Template.
+        // We can append Teleporter Data at the end or mix it.
+        // Let's append Teleporter Data at the end.
+
+        // Teleporter Body: ~14 instructions + 2 Data.
+
+        // Constructing Nomad...
+
+        // --- Data ---
+        // 0: Template (SmartLoop)
+        // We need to calculate worker index for Template.
+        // Worker is inside Loop.
+        // Loop starts at: dataSize + checkSize + slBootSize = 5 + 3 + 4 = 12.
+        // Worker is at Loop+3 = 15.
+        // Global Worker Index = 15.
+        const workerIndex = 15;
+        const srcRel = -workerIndex;
+        const dstRel = offset - workerIndex;
+        const slTemplate = Instruction.encode(OPCODES.MOV, MODES.RELATIVE, srcRel, MODES.RELATIVE, dstRel);
+
+        program.push(slTemplate); // 0
+        program.push(16385); // 1 (Const1: Inc Copy)
+        program.push(128);   // 2 (Const2: Inc Dst Offset)
+        program.push(128 << 14); // 3 (Const3: Inc Src Offset / Spawn ValA)
+        program.push(128 << 14); // 4 (Const4: Inc Check ValA) - Same as Const3 actually?
+        // Check instruction uses MOV valA (Offset).
+        // Spawn instruction uses SPWN valA (Offset).
+        // Both are in the same relative frame?
+        // Check instr is at 5. Spawn instr is at 16 (Check+11).
+        // If we want to check `IP + Offset`, and `IP` differs by 11...
+        // The Offset in instruction must differ by 11.
+        // But we want to check the *same* absolute address.
+        // Addr = IP_check + Off_check = IP_spawn + Off_spawn.
+        // IP_spawn = IP_check + 11.
+        // Off_check = Off_spawn + 11.
+        // So they are different values. But the *increment* (128) is the same.
+        // So we can reuse Const3 if it's just adding 128 to the field.
+        // Yes, ADDF adds to the field.
+        // So we don't need Const4 if we reuse Const3.
+        // Let's stick to indices 0..3.
+
+        // --- Check --- (Index 5..7)
+        // 5: MOV $Offset, %0.
+        // Offset needs to point to `Start + Offset`.
+        // IP = 5. Start = 0. Target = 0 + Offset = Offset.
+        // Rel = Offset - 5.
+        // But wait, `SmartLoop` updates `SPWN` offset.
+        // We must also update this `MOV` offset.
+        // Initial value:
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, offset - 5, MODES.REGISTER, 0));
+
+        // 6: SEQ %0, #0 (Skip if Equal 0 / Empty)
+        program.push(Instruction.encode(OPCODES.SEQ, MODES.REGISTER, 0, MODES.IMMEDIATE, 0));
+
+        // 7: JMP Teleport
+        // Teleport starts at Index 24.
+        // IP=7. Target=24. Rel = 17.
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 17, 0, 0));
+
+        // --- SmartLoop Boot --- (Index 8..11)
+        // 8: MOV #0, %0
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 0, MODES.REGISTER, 0));
+
+        // 9: MOV #Size, %1. Size needs to cover Teleporter too?
+        // If we replicate locally, we should probably copy the whole Nomad package.
+        // Total Size calculation:
+        // SL Part (24) + Teleporter Part (16) = 40.
+        const totalNomadSize = 40;
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, totalNomadSize, MODES.REGISTER, 1));
+
+        // 10: MOV $Template, %2. Template at 0. IP=10. Rel = -10.
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -10, MODES.REGISTER, 2));
+
+        // 11: MOV $Const1, %3. Const1 at 1. IP=11. Rel = -10.
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -10, MODES.REGISTER, 3));
+
+        // --- SmartLoop Loop --- (Index 12..18)
+        // 12: SNE %0, %1
+        program.push(Instruction.encode(OPCODES.SNE, MODES.REGISTER, 0, MODES.REGISTER, 1));
+        // 13: JMP Spawn (Target 19. 19-13 = 6)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 6, 0, 0));
+
+        // 14: MOV %2, $1 (Reset Worker at 15. Rel=1)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, 1));
+
+        // 15: Worker (NOP)
+        program.push(0);
+
+        // 16: ADDF %3, %2
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.REGISTER, 3, MODES.REGISTER, 2));
+
+        // 17: ADD #1, %0
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
+
+        // 18: JMP Loop (Target 12. 12-18 = -6)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -6, 0, 0));
+
+        // --- SmartLoop Spawn --- (Index 19)
+        // Target = Start + Offset. IP=19. Rel = Offset - 19.
+        program.push(Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, offset - 19, 0, 0));
+
+        // --- SmartLoop Update --- (Index 20..23)
+        // 20: ADDF $Const2, $Template. (Update Template Dst)
+        // Const2 at 2. IP=20. Rel = -18.
+        // Template at 0. IP=20. Rel = -20.
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.RELATIVE, -18, MODES.RELATIVE, -20));
+
+        // 21: ADDF $Const3, $Spawn. (Update Spawn Offset)
+        // Const3 at 3. IP=21. Rel = -18.
+        // Spawn at 19. IP=21. Rel = -2.
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.RELATIVE, -18, MODES.RELATIVE, -2));
+
+        // 22: ADDF $Const3, $Check. (Update Check Offset)
+        // Const3 at 3. IP=22. Rel = -19.
+        // Check at 5. IP=22. Rel = 5-22 = -17.
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.RELATIVE, -19, MODES.RELATIVE, -17));
+
+        // 23: JMP Boot (Target 8. 8-23 = -15)
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -15, 0, 0));
+
+        // --- Teleporter --- (Index 24..39)
+        // 24: SYS #1, #20 (Set Mutation Rate to 2% to cause chaos)
+        program.push(Instruction.encode(OPCODES.SYS, MODES.IMMEDIATE, 1, MODES.IMMEDIATE, 20));
+
+        // 25: RAND %0
+        program.push(Instruction.encode(OPCODES.RAND, 0, 0, MODES.REGISTER, 0));
+
+        // 26: MOV #Size, %1. (Total Nomad Size = 41 now, due to SYS)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, totalNomadSize + 1, MODES.REGISTER, 1));
+
+        // 27: MOV #0, %2
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 0, MODES.REGISTER, 2));
+
+        // 28: MOV $TpTemplate, %3.
+        // TpTemplate will be at 40 (39+1). IP=28. Rel = 40-28 = 12.
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 12, MODES.REGISTER, 3));
+
+        // 29: Loop: MOV %3, $Exec. Exec at 30. Rel=1.
+        program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 3, MODES.RELATIVE, 1));
+
+        // 30: Exec
+        program.push(0);
+
+        // 31: ADD #1, %0
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
+
+        // 32: ADDF $TpConst, %3.
+        // TpConst at 41 (40+1). IP=32. Rel = 9.
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.RELATIVE, 9, MODES.REGISTER, 3));
+
+        // 33: ADD #1, %2
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 2));
+
+        // 34: SEQ %2, %1
+        program.push(Instruction.encode(OPCODES.SEQ, MODES.REGISTER, 2, MODES.REGISTER, 1));
+
+        // 35: JMP Loop (29). 29-35 = -6.
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -6, 0, 0));
+
+        // 36: SUB %1, %0 (Restore Start Addr)
+        program.push(Instruction.encode(OPCODES.SUB, MODES.REGISTER, 1, MODES.REGISTER, 0));
+
+        // 37: SPWN @%0
+        program.push(Instruction.encode(OPCODES.SPWN, MODES.REG_INDIRECT, 0, 0, 0));
+
+        // 38: JMP Update (Go back to update offsets)
+        // Jumping to Update (20).
+        // IP=38. Target=20. Rel = -18.
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -18, 0, 0));
+
+        // 39 -> 40: TpTemplate. MOV Rel(Start-Exec), @%0.
+        // Start=0. Exec=30. SrcRel = -30.
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -30, MODES.REG_INDIRECT, 0));
+
+        // 40 -> 41: TpConst (1<<14)
+        program.push(1<<14);
+
+        return program;
+    }
 
     if (name === "Killer") {
         // Shoots DIE instructions into memory before replicating
@@ -1158,6 +1425,29 @@ function updateStats() {
             if (p.gen > maxGen) maxGen = p.gen;
         }
         stats.innerText = `Prozesse: ${vm.processes.length} | Zyklen: ${vm.cycles} | Max Gen: ${maxGen} | Mutationen: ${vm.totalMutations}`;
+
+        // Update sliders if VM value changed (HACK Detection)
+        // Check Mutation Rate
+        const mutationRange = document.getElementById('mutationRange');
+        const currentUIRate = parseInt(mutationRange.value) / 1000;
+        // Compare with tolerance
+        if (Math.abs(vm.mutationRate - currentUIRate) > 0.0001) {
+             mutationRange.value = vm.mutationRate * 1000;
+             document.getElementById('mutationValue').innerText = (vm.mutationRate * 100).toFixed(1) + "%";
+             // Optional: Highlight that it was hacked?
+             document.getElementById('mutationValue').style.color = '#f00';
+             setTimeout(() => { document.getElementById('mutationValue').style.color = ''; }, 500);
+        }
+
+        // Check Max Age
+        const maxAgeRange = document.getElementById('maxAgeRange');
+        if (vm.maxAge !== parseInt(maxAgeRange.value)) {
+            maxAgeRange.value = vm.maxAge;
+            document.getElementById('maxAgeValue').innerText = vm.maxAge === 0 ? "∞" : vm.maxAge;
+             // Optional: Highlight that it was hacked?
+             document.getElementById('maxAgeValue').style.color = '#f00';
+             setTimeout(() => { document.getElementById('maxAgeValue').style.color = ''; }, 500);
+        }
     }
 }
 
