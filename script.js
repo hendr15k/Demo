@@ -439,7 +439,10 @@ const SPECIES_COLORS = {
     "Fortress": 300, // Magenta
     "Teleporter": 270, // Purple
     "Glider": 180, // Cyan
-    "Nomad": 30 // Orange
+    "Nomad": 30, // Orange
+    "Hunter": 150, // Spring Green
+    "Parasite": 330, // Pink/Rose
+    "Bomber": 15 // Deep Orange/Red
 };
 
 function getSpeciesProgram(name) {
@@ -1048,6 +1051,144 @@ function getSpeciesProgram(name) {
         return program;
     }
 
+    if (name === "Hunter") {
+        // Hunter: Scans memory sequentially. If it finds non-empty memory, it overwrites it with DIE.
+        // It's a predator that moves through memory.
+        const headerSize = 10;
+
+        // Structure:
+        // [Data: DIE Instr] (0)
+        // [Data: Step Const = 1] (1)
+        // [Data: Scan Const = 1<<14] (2)
+        // [Boot: Init %0 = Start Scan Addr] (3)
+        // [Loop: Scan]
+        //   [SNE %0, 0] (Skip next if %0 != 0) (4)
+        //   [JMP $Empty] (Jump to Move/Increment) (5)
+        //   [MOV $DIE, @%0] (Kill!) (6)
+        // [Move/Empty]
+        //   [ADD $Step, %0] (7)
+        //   [ADDF $Scan, $ScanTarget] (Move Scanner) (8)
+        //   [JMP $Loop] (9)
+        // [Replicate...]
+
+        // This is complex, let's simplify Hunter to just use a fast linear loop killing everything,
+        // then replicating like a Glider.
+
+        // Simplify: Hunter is a Glider that leaves a trail of DIE instructions behind it,
+        // or throws DIEs ahead of it.
+        // Let's make it shoot DIEs 1 to 10 spaces ahead of its target offset.
+        for(let k=1; k<=5; k++) {
+            header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -k, MODES.RELATIVE, offset + k)); // Assuming DIE is at -k (Data at end)
+        }
+        // Data for DIE will be at the end of the header. We'll fix offsets later.
+
+        // Actually, easiest way is to push a custom program directly:
+        // 0: Template
+        // 1: Const (1<<14)
+        // 2: Const DIE (Opcode 15)
+        // 3: Boot %0 = offset
+        // 4..10: Copy Loop
+        // 11: MOV $DIE, @%0 (Kill ahead!)
+        // 12: SPWN
+        // 13: DIE
+        const totalSize = 14;
+        const workerIndex = 8;
+        const dieDataIndex = 2;
+
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -workerIndex, MODES.RELATIVE, offset - workerIndex));
+        program.push(1<<14);
+        program.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0));
+
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, offset, MODES.REGISTER, 0)); // %0 = offset
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, totalSize, MODES.REGISTER, 1)); // %1 = totalSize
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 0, MODES.REGISTER, 2)); // %2 = 0
+
+        // Loop at 6
+        program.push(Instruction.encode(OPCODES.SEQ, MODES.REGISTER, 2, MODES.REGISTER, 1)); // Skip if %2 == %1
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 3, 0, 0)); // Jump to Spawn if done
+
+        // Worker at 8
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -8, MODES.RELATIVE, offset - 8)); // Copied from 0
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.RELATIVE, -8, MODES.RELATIVE, -1)); // Add 1<<14 to worker (Const at 1)
+
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 2)); // %2++
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -5, 0, 0)); // Jump to Loop at 6
+
+        // Spawn/Kill phase at 12
+        // Kill memory at offset+20
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -10, MODES.RELATIVE, offset + 20)); // Write DIE (from 2) to offset+20
+        program.push(Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, offset - 13, 0, 0)); // Spawn at offset
+        program.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0)); // Parent dies
+
+        return program;
+    }
+
+    if (name === "Parasite") {
+        // Parasite: Injects JMP instructions into random locations pointing back to itself.
+        // Data: JMP instruction pointing to Parasite's start.
+        // Because of Relative Addressing, a JMP $X means "Jump X from current IP".
+        // If we inject JMP $X into random address Y, and we want it to jump to Parasite Start (Z),
+        // we need X = Z - Y.
+        // This requires runtime calculation of the JMP instruction!
+        // Simpler Parasite: Just use Register Indirect to execute our code?
+        // No, simplest is to use SPWN on random targets! It forces them to run our code.
+        // Or inject a JMP to 0 (Boot), which will restart whatever is there, confusing it.
+        // Let's implement a Bomber-style Parasite: Shoots SPWN instructions.
+        // Actually, SPWN is Opcode 7.
+        // Data: SPWN $0 (Spawn new process here)
+        // If another process executes SPWN $0, it spawns a child at its own location, clogging the CPU queue!
+
+        const spwnData = Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, 0, 0, 0);
+        const headerLoopSize = 2;
+        const iterations = 5;
+
+        for(let k=0; k<iterations; k++) {
+            header.push(Instruction.encode(OPCODES.RAND, 0, 0, MODES.REGISTER, 0));
+            // Write SPWN to random address
+            header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, iterations * headerLoopSize + 1 - (k * headerLoopSize + 1), MODES.REG_INDIRECT, 0));
+        }
+        header.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 2, 0, 0)); // Skip data
+        header.push(spwnData); // Data at iterations * 2 + 1
+    }
+
+    if (name === "Bomber") {
+        // Bomber: Calculates a distant address and drops a large payload of DIE instructions in a block.
+        // Similar to Killer, but targets a block sequentially.
+        const payloadSize = 10;
+
+        // 0: Init Target %0 = RAND
+        header.push(Instruction.encode(OPCODES.RAND, 0, 0, MODES.REGISTER, 0));
+        // 1: Init Counter %1 = payloadSize
+        header.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, payloadSize, MODES.REGISTER, 1));
+
+        // Loop at 2
+        // 2: Write DIE
+        header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 6 - 2, MODES.REG_INDIRECT, 0)); // DIE data is at 6
+        // 3: Target++
+        header.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
+        // 4: Counter--
+        header.push(Instruction.encode(OPCODES.SUB, MODES.IMMEDIATE, 1, MODES.REGISTER, 1));
+        // 5: Loop if > 0
+        header.push(Instruction.encode(OPCODES.JNZ, MODES.REGISTER, 1, MODES.RELATIVE, -3));
+
+        // 6: Data (DIE)
+        header.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0));
+
+        // Adjust jump to skip data if necessary, but loop ends at 5 and falls through to 6 (which is DIE!).
+        // Wait, if it falls through to 6, it dies! We need a JMP over the data.
+
+        // Let's rewrite:
+        header = [];
+        header.push(Instruction.encode(OPCODES.RAND, 0, 0, MODES.REGISTER, 0)); // 0
+        header.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, payloadSize, MODES.REGISTER, 1)); // 1
+        header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, 7 - 2, MODES.REG_INDIRECT, 0)); // 2 (DIE at 7)
+        header.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0)); // 3
+        header.push(Instruction.encode(OPCODES.SUB, MODES.IMMEDIATE, 1, MODES.REGISTER, 1)); // 4
+        header.push(Instruction.encode(OPCODES.JNZ, MODES.REGISTER, 1, MODES.RELATIVE, -3)); // 5 (Jumps to 2)
+        header.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 2, 0, 0)); // 6 (Skip DIE)
+        header.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0)); // 7 (Data)
+    }
+
     if (name === "Basic") {
         // Basic Replicator: Separated ADDs, requires Constant for High Bits.
         // Structure:
@@ -1350,30 +1491,69 @@ function drawPopulationGraph() {
         vm.populationHistory.shift();
     }
 
-    // Draw
-    ctx.fillStyle = '#111';
+    // Draw Background & Grid
+    ctx.fillStyle = '#050510';
     ctx.fillRect(0, 0, width, height);
 
+    // Grid lines
+    ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.strokeStyle = '#0f0';
-    ctx.lineWidth = 2;
+    for(let y=0; y<height; y+=20) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+    }
+    for(let x=0; x<width; x+=50) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+    }
+    ctx.stroke();
+
+    if (vm.populationHistory.length === 0) return;
 
     const maxPop = Math.max(MAX_PROCESSES, ...vm.populationHistory);
+
+    // Draw Graph Fill Gradient
+    ctx.beginPath();
+    ctx.moveTo(0, height);
 
     for (let i = 0; i < vm.populationHistory.length; i++) {
         const x = i;
         const pop = vm.populationHistory[i];
         const y = height - (pop / maxPop * height);
+        ctx.lineTo(x, y);
+    }
 
+    ctx.lineTo(vm.populationHistory.length - 1, height);
+    ctx.closePath();
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, height);
+    gradient.addColorStop(0, 'rgba(0, 255, 255, 0.5)');
+    gradient.addColorStop(1, 'rgba(0, 255, 255, 0.0)');
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    // Draw Graph Line
+    ctx.beginPath();
+    ctx.strokeStyle = '#0ff'; // Neon blue/cyan
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#0ff';
+
+    for (let i = 0; i < vm.populationHistory.length; i++) {
+        const x = i;
+        const pop = vm.populationHistory[i];
+        const y = height - (pop / maxPop * height);
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
     }
     ctx.stroke();
+    ctx.shadowBlur = 0; // reset
 
     // Draw current value text
     ctx.fillStyle = '#fff';
-    ctx.font = '10px monospace';
-    ctx.fillText(`Pop: ${vm.processes.length}`, width - 60, 20);
+    ctx.font = '12px "Fira Code", monospace';
+    ctx.fillText(`Pop: ${vm.processes.length}`, width - 70, 20);
 }
 
 function draw() {
@@ -1399,14 +1579,18 @@ function draw() {
 
         if (vm.memoryMap[i]) {
             ctx.fillStyle = vm.memoryMap[i];
-            ctx.fillRect(x, y, cellW, cellH);
+            ctx.globalAlpha = 0.8;
+            ctx.fillRect(x + 0.5, y + 0.5, cellW - 1, cellH - 1);
+            ctx.globalAlpha = 1.0;
         } else if (vm.memory[i] !== 0) {
-            ctx.fillStyle = '#333'; // Dead data
-            ctx.fillRect(x, y, cellW, cellH);
+            ctx.fillStyle = '#223'; // Dead data
+            ctx.fillRect(x + 0.5, y + 0.5, cellW - 1, cellH - 1);
         }
     }
 
-    // Draw IPs
+    // Draw IPs with Glow
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#0ff';
     for (let p of vm.processes) {
         const i = p.ip;
         const x = (i % cols) * cellW;
@@ -1415,6 +1599,7 @@ function draw() {
         ctx.fillStyle = '#fff';
         ctx.fillRect(x+1, y+1, cellW-2, cellH-2);
     }
+    ctx.shadowBlur = 0; // reset
 }
 
 function updateStats() {
@@ -1518,6 +1703,36 @@ if (typeof document !== 'undefined') {
         spawnSpecies(species);
     });
 
+    document.getElementById('radiationBtn').addEventListener('click', () => {
+        if (!vm) return;
+        const oldMutationRate = vm.mutationRate;
+        const radiationBtn = document.getElementById('radiationBtn');
+
+        // Spike mutation rate to 10% (0.1)
+        vm.mutationRate = 0.1;
+        mutationRate = 0.1;
+
+        // Update UI to reflect spike
+        document.getElementById('mutationRange').value = 100;
+        document.getElementById('mutationValue').innerText = "10.0%";
+        document.getElementById('mutationValue').style.color = '#f00';
+        radiationBtn.style.backgroundColor = '#fa0';
+        radiationBtn.innerText = "AKTIV!";
+
+        // Reset after 3 seconds
+        setTimeout(() => {
+            if (!vm) return;
+            vm.mutationRate = oldMutationRate;
+            mutationRate = oldMutationRate;
+
+            document.getElementById('mutationRange').value = oldMutationRate * 1000;
+            document.getElementById('mutationValue').innerText = (oldMutationRate * 100).toFixed(1) + "%";
+            document.getElementById('mutationValue').style.color = '';
+            radiationBtn.style.backgroundColor = '';
+            radiationBtn.innerText = "STRAHLUNG";
+        }, 3000);
+    });
+
     document.getElementById('speedRange').addEventListener('input', (e) => {
         speed = parseInt(e.target.value);
     });
@@ -1585,7 +1800,9 @@ if (typeof document !== 'undefined') {
         reader.readAsText(file);
     });
 
-    document.getElementById('memoryCanvas').addEventListener('click', (e) => {
+    document.getElementById('memoryCanvas').addEventListener('contextmenu', (e) => e.preventDefault());
+
+    document.getElementById('memoryCanvas').addEventListener('mousedown', (e) => {
         const canvas = e.target;
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
@@ -1603,6 +1820,20 @@ if (typeof document !== 'undefined') {
         const idx = row * cols + col;
 
         if (idx >= 0 && idx < MEMORY_SIZE) {
+            // Shift-click or Right-click: Inject DIE and kill processes
+            if (e.shiftKey || e.button === 2) {
+                vm.memory[idx] = Instruction.encode(OPCODES.DIE, 0, 0, 0, 0);
+                vm.memoryMap[idx] = '#fff'; // Flash white
+
+                // Kill any process at this IP
+                vm.processes.forEach(p => {
+                    if (p.ip === idx) p.alive = false;
+                });
+
+                draw();
+                return;
+            }
+
             const word = vm.memory[idx];
             const instr = Instruction.decode(word);
 
