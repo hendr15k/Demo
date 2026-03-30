@@ -8,41 +8,78 @@
 </head>
 <body>
     <div id="container">
-        <h1>Bio-Programme: Kampf um CPU-Zyklen</h1>
-        <div id="controls">
-            <button id="startBtn">Start</button>
-            <button id="pauseBtn">Pause</button>
-            <button id="stepBtn">Schritt</button>
-            <button id="resetBtn">Reset</button>
-            <button id="randomSoupBtn">Ursuppe</button>
-            <button id="spawnBtn">Spawn</button>
-            <button id="tournamentBtn">Turnier</button>
-            <button id="meteorBtn" style="background-color: #522; color: #fcc;">Meteor</button>
-            <select id="speciesSelect">
-                <option value="Basic">Basic Replicator</option>
-                <option value="SmartLoop">Smart Loop</option>
-                <option value="Hyper">Hyper Replicator</option>
-                <option value="Glider">Glider (Wanderer)</option>
-                <option value="Killer">Killer (Räuber)</option>
-                <option value="Fortress">Fortress (Verteidiger)</option>
-                <option value="Teleporter">Teleporter (Chaos)</option>
-                <option value="Nomad">Nomad (Ausbrecher)</option>
-            </select>
-            <label>Geschwindigkeit: <input type="range" id="speedRange" min="1" max="1000" value="50"></label>
-            <label>Mutation: <input type="range" id="mutationRange" min="0" max="100" value="1"> <span id="mutationValue">0.1%</span></label>
-            <label>Max Alter: <input type="range" id="maxAgeRange" min="0" max="10000" value="0"> <span id="maxAgeValue">∞</span></label>
-            <button id="exportBtn">Save</button>
-            <button id="importBtn">Load</button>
-            <input type="file" id="importFile" style="display:none">
+
+        <div class="sidebar-left panel">
+            <h1>Bio-Programme</h1>
+            <div id="controls">
+                <div class="button-group">
+                    <button id="startBtn">Start</button>
+                    <button id="pauseBtn">Pause</button>
+                    <button id="stepBtn">Schritt</button>
+                    <button id="resetBtn">Reset</button>
+                </div>
+                <div class="button-group">
+                    <button id="randomSoupBtn">Ursuppe</button>
+                    <button id="tournamentBtn">Turnier</button>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); width: 100%; margin: 10px 0;">
+
+                <select id="speciesSelect">
+                    <option value="Basic">Basic Replicator</option>
+                    <option value="Titan">Titan (Robust)</option>
+                    <option value="SmartLoop">Smart Loop</option>
+                    <option value="Hyper">Hyper Replicator</option>
+                    <option value="Glider">Glider (Wanderer)</option>
+                    <option value="Killer">Killer (Räuber)</option>
+                    <option value="Bomber">Bomber (Sprenger)</option>
+                    <option value="Fortress">Fortress (Verteidiger)</option>
+                    <option value="Teleporter">Teleporter (Chaos)</option>
+                    <option value="Nomad">Nomad (Ausbrecher)</option>
+                </select>
+                <button id="spawnBtn">Spawn</button>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); width: 100%; margin: 10px 0;">
+
+                <div class="button-group">
+                    <button id="meteorBtn">Meteor</button>
+                    <button id="radiationBtn">Strahlung</button>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); width: 100%; margin: 10px 0;">
+
+                <label>Geschwindigkeit: <input type="range" id="speedRange" min="1" max="1000" value="50"></label>
+                <label>Mutation: <input type="range" id="mutationRange" min="0" max="100" value="1"> <span id="mutationValue">0.1%</span></label>
+                <label>Max Alter: <input type="range" id="maxAgeRange" min="0" max="10000" value="0"> <span id="maxAgeValue">∞</span></label>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); width: 100%; margin: 10px 0;">
+
+                <div class="button-group">
+                    <button id="exportBtn">Save</button>
+                    <button id="importBtn">Load</button>
+                    <input type="file" id="importFile" style="display:none">
+                </div>
+            </div>
+
+            <div id="eventsLog"></div>
         </div>
-        <div id="statsContainer">
-            <span id="stats">Aktive Prozesse: 0 | Zyklen: 0</span>
+
+        <div class="main-content">
+            <div id="statsContainer">
+                <span id="stats">Aktive Prozesse: 0 | Zyklen: 0</span>
+            </div>
+            <canvas id="memoryCanvas" width="512" height="512"></canvas>
+            <canvas id="populationGraph" width="512" height="100" style="background-color: #0b0c10;"></canvas>
         </div>
-        <canvas id="memoryCanvas" width="512" height="512"></canvas>
-        <canvas id="populationGraph" width="512" height="100" style="background-color: #111; border: 1px solid #333; margin-top: 5px;"></canvas>
-        <div id="info">
-            <p>Jedes Pixel repräsentiert ein Byte im Speicher. Farben zeigen Besitz/Aktivität an.</p>
+
+        <div class="sidebar-right panel">
+            <h3>Speicher & Info</h3>
+            <div id="info">
+                <p>Jedes Pixel repräsentiert ein Byte im Speicher. Farben zeigen Besitz/Aktivität an.</p>
+                <p>Klicke auf den Speicher, um Details zu sehen.</p>
+            </div>
         </div>
+
     </div>
     <script src="script.js"></script>
 </body>
