@@ -439,7 +439,9 @@ const SPECIES_COLORS = {
     "Fortress": 300, // Magenta
     "Teleporter": 270, // Purple
     "Glider": 180, // Cyan
-    "Nomad": 30 // Orange
+    "Nomad": 30, // Orange
+    "Bomber": 10, // Orange-Red
+    "Titan": 220 // Deep Blue
 };
 
 function getSpeciesProgram(name) {
@@ -690,6 +692,37 @@ function getSpeciesProgram(name) {
         program.push(1<<14);
 
         return program;
+    }
+
+    if (name === "Bomber") {
+        // Drops 15 DIE instructions randomly across memory before replicating
+        // Built on top of SmartLoop (like Killer)
+        const headerLoopSize = 2; // RAND + MOV
+        const iterations = 15;
+        const totalHeaderSize = iterations * headerLoopSize + 1; // +1 for Data
+
+        // Data index relative to start of header (after Loop + JMP)
+        const dataIndex = iterations * headerLoopSize + 1;
+
+        for(let k=0; k<iterations; k++) {
+            // Index of this instruction in the header sequence
+            const currentIdx = k * headerLoopSize;
+
+            // 1. RAND %0 (Generate random address)
+            header.push(Instruction.encode(OPCODES.RAND, 0, 0, MODES.REGISTER, 0));
+
+            // 2. MOV $Data, @%0 (Write DIE to random address)
+            // IP is currentIdx + 1. Data is at dataIndex.
+            // Offset = dataIndex - (currentIdx + 1).
+            header.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, dataIndex - (currentIdx + 1), MODES.REG_INDIRECT, 0));
+        }
+
+        // Push JMP over Data (Skip DIE)
+        // Target is +2 (Skip 1 instruction)
+        header.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, 2, 0, 0));
+
+        // Push Data (DIE instruction)
+        header.push(dieInstr);
     }
 
     if (name === "Killer") {
@@ -1048,6 +1081,50 @@ function getSpeciesProgram(name) {
         return program;
     }
 
+    if (name === "Titan") {
+        // Titan: Basic replicator wrapped in armor (NOP padding)
+        const totalSize = 15;
+        const armorSize = 10;
+
+        // Front Armor
+        for (let i = 0; i < armorSize; i++) {
+            program.push(Instruction.encode(OPCODES.NOP, 0, 0, 0, 0));
+        }
+
+        const workerIndex = armorSize + 7;
+        const srcRel = -workerIndex;
+        const dstRel = offset - workerIndex;
+
+        // Core (Same as Basic)
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, srcRel, MODES.RELATIVE, dstRel));
+        program.push(1<<14);
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, 0, MODES.REGISTER, 0));
+
+        // Size to copy now includes both front and back armor
+        const copySize = totalSize + (armorSize * 2);
+        program.push(Instruction.encode(OPCODES.MOV, MODES.IMMEDIATE, copySize, MODES.REGISTER, 1));
+
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -4, MODES.REGISTER, 2));
+        program.push(Instruction.encode(OPCODES.MOV, MODES.RELATIVE, -4, MODES.REGISTER, 3));
+        program.push(Instruction.encode(OPCODES.MOV, MODES.REGISTER, 2, MODES.RELATIVE, 1));
+        program.push(Instruction.encode(OPCODES.NOP, 0, 0, 0, 0));
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.IMMEDIATE, 1, MODES.REGISTER, 2));
+        program.push(Instruction.encode(OPCODES.ADDF, MODES.REGISTER, 3, MODES.REGISTER, 2));
+        program.push(Instruction.encode(OPCODES.ADD, MODES.IMMEDIATE, 1, MODES.REGISTER, 0));
+        program.push(Instruction.encode(OPCODES.SEQ, MODES.REGISTER, 0, MODES.REGISTER, 1));
+        program.push(Instruction.encode(OPCODES.JMP, MODES.RELATIVE, -6, 0, 0));
+
+        program.push(Instruction.encode(OPCODES.SPWN, MODES.RELATIVE, offset - 13, 0, 0));
+        program.push(Instruction.encode(OPCODES.DIE, 0, 0, 0, 0));
+
+        // Back Armor
+        for (let i = 0; i < armorSize; i++) {
+            program.push(Instruction.encode(OPCODES.NOP, 0, 0, 0, 0));
+        }
+
+        return program;
+    }
+
     if (name === "Basic") {
         // Basic Replicator: Separated ADDs, requires Constant for High Bits.
         // Structure:
@@ -1350,16 +1427,24 @@ function drawPopulationGraph() {
         vm.populationHistory.shift();
     }
 
-    // Draw
-    ctx.fillStyle = '#111';
+    // Draw background
+    ctx.fillStyle = '#0b0c10';
     ctx.fillRect(0, 0, width, height);
 
-    ctx.beginPath();
-    ctx.strokeStyle = '#0f0';
-    ctx.lineWidth = 2;
+    if (vm.populationHistory.length === 0) return;
 
     const maxPop = Math.max(MAX_PROCESSES, ...vm.populationHistory);
 
+    // Create Gradient
+    const gradient = ctx.createLinearGradient(0, 0, 0, height);
+    gradient.addColorStop(0, 'rgba(102, 252, 241, 0.5)'); // primary-color
+    gradient.addColorStop(1, 'rgba(102, 252, 241, 0.0)');
+
+    ctx.beginPath();
+    ctx.strokeStyle = '#66fcf1';
+    ctx.lineWidth = 2;
+
+    // Line path
     for (let i = 0; i < vm.populationHistory.length; i++) {
         const x = i;
         const pop = vm.populationHistory[i];
@@ -1370,10 +1455,17 @@ function drawPopulationGraph() {
     }
     ctx.stroke();
 
+    // Fill path
+    ctx.lineTo(vm.populationHistory.length - 1, height);
+    ctx.lineTo(0, height);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
     // Draw current value text
-    ctx.fillStyle = '#fff';
-    ctx.font = '10px monospace';
-    ctx.fillText(`Pop: ${vm.processes.length}`, width - 60, 20);
+    ctx.fillStyle = '#c5c6c7';
+    ctx.font = '12px "Share Tech Mono"';
+    ctx.fillText(`Pop: ${vm.processes.length}`, width - 70, 20);
 }
 
 function draw() {
@@ -1393,27 +1485,54 @@ function draw() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, width, height);
 
+    // Turn off shadow for memory drawing
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+
     for (let i = 0; i < MEMORY_SIZE; i++) {
         const x = (i % cols) * cellW;
         const y = Math.floor(i / cols) * cellH;
 
         if (vm.memoryMap[i]) {
             ctx.fillStyle = vm.memoryMap[i];
-            ctx.fillRect(x, y, cellW, cellH);
+            ctx.fillRect(x, y, cellW - 1, cellH - 1);
         } else if (vm.memory[i] !== 0) {
-            ctx.fillStyle = '#333'; // Dead data
-            ctx.fillRect(x, y, cellW, cellH);
+            ctx.fillStyle = '#222'; // Dead data
+            ctx.fillRect(x, y, cellW - 1, cellH - 1);
+        } else {
+            ctx.fillStyle = '#0a0a0a'; // Empty memory slightly visible
+            ctx.fillRect(x, y, cellW - 1, cellH - 1);
         }
     }
 
-    // Draw IPs
+    // Draw IPs with glow
     for (let p of vm.processes) {
         const i = p.ip;
         const x = (i % cols) * cellW;
         const y = Math.floor(i / cols) * cellH;
 
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#fff';
         ctx.fillStyle = '#fff';
-        ctx.fillRect(x+1, y+1, cellW-2, cellH-2);
+        ctx.fillRect(x, y, cellW - 1, cellH - 1);
+    }
+
+    // Reset shadow
+    ctx.shadowBlur = 0;
+}
+
+function logEvent(message, type = '') {
+    const log = document.getElementById('eventsLog');
+    if (!log) return;
+    const entry = document.createElement('div');
+    entry.className = `event-entry ${type}`;
+    const time = new Date().toLocaleTimeString('de-DE', { hour12: false });
+    entry.innerText = `[${time}] ${message}`;
+    log.prepend(entry);
+
+    // Limit to 50 entries
+    while (log.children.length > 50) {
+        log.removeChild(log.lastChild);
     }
 }
 
@@ -1495,22 +1614,50 @@ if (typeof document !== 'undefined') {
 
     document.getElementById('meteorBtn').addEventListener('click', () => {
         if (!vm) return;
+        let killed = 0;
         // Kill 50% of processes
         vm.processes.forEach(p => {
             if (Math.random() < 0.5) {
                 p.alive = false;
+                killed++;
             }
         });
-        // Optional: Add visual noise or craters?
-        // Let's clear some memory randomly too
+        // Clear some memory randomly too
         for(let i=0; i<100; i++) {
             const addr = Math.floor(Math.random() * MEMORY_SIZE);
             vm.memory[addr] = 0;
             vm.memoryMap[addr] = null;
         }
+        logEvent(`Meteorschauer! ${killed} Prozesse vernichtet.`, 'meteor');
         draw();
         updateStats();
         drawPopulationGraph();
+    });
+
+    document.getElementById('radiationBtn').addEventListener('click', () => {
+        if (!vm) return;
+        // Flip random bits in 10% of memory
+        const affectedCells = Math.floor(MEMORY_SIZE * 0.1);
+        let mutations = 0;
+        for (let i = 0; i < affectedCells; i++) {
+            const addr = Math.floor(Math.random() * MEMORY_SIZE);
+            if (vm.memoryMap[addr] !== null) {
+                const bit = Math.floor(Math.random() * 32);
+                vm.memory[addr] ^= (1 << bit);
+                mutations++;
+            }
+        }
+        logEvent(`Strahlungsblitz! ${mutations} Mutationen erzwungen.`, 'radiation');
+
+        // Add visual flash
+        const canvas = document.getElementById('memoryCanvas');
+        if (canvas) {
+            canvas.style.boxShadow = "0 0 50px var(--accent-yellow)";
+            setTimeout(() => { canvas.style.boxShadow = "0 0 20px rgba(69, 162, 158, 0.4)"; }, 500);
+        }
+
+        draw();
+        updateStats();
     });
 
     document.getElementById('spawnBtn').addEventListener('click', () => {
