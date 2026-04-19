@@ -216,7 +216,17 @@ class VM {
     }
 
     step() {
-        this.processes = this.processes.filter(p => p.alive);
+        // Efficient in-place filter: swap dead processes to end, then truncate
+        let aliveCount = 0;
+        for (let i = 0; i < this.processes.length; i++) {
+            if (this.processes[i].alive) {
+                if (aliveCount !== i) {
+                    this.processes[aliveCount] = this.processes[i];
+                }
+                aliveCount++;
+            }
+        }
+        this.processes.length = aliveCount;
 
         if (this.processes.length === 0) return;
 
