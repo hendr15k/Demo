@@ -1505,16 +1505,24 @@ function draw() {
         }
     }
 
-    // Draw IPs with glow
-    for (let p of vm.processes) {
+    // Draw IPs with glow — distinguish active from dead processes
+    for (const p of vm.processes) {
+        if (!p.alive) continue;
         const i = p.ip;
         const x = (i % cols) * cellW;
         const y = Math.floor(i / cols) * cellH;
 
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = '#fff';
-        ctx.fillStyle = '#fff';
+        // Outer glow ring
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = '#66fcf1';
+        ctx.fillStyle = '#66fcf1';
         ctx.fillRect(x, y, cellW - 1, cellH - 1);
+
+        // Bright inner core
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#ffffff';
+        const innerPad = 2;
+        ctx.fillRect(x + innerPad, y + innerPad, cellW - 1 - innerPad * 2, cellH - 1 - innerPad * 2);
     }
 
     // Reset shadow
